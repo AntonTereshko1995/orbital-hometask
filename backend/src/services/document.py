@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import os
 import uuid
+from typing import Any
 
-import fitz  # PyMuPDF  # pyright: ignore[reportMissingTypeStubs]
 import structlog
-from config import settings
-from db.models import Document
 from fastapi import UploadFile
+from markitdown import MarkItDown  # type: ignore[import-untyped]
+from pypdf import PdfReader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
+from db.models import Document
+
 logger = structlog.get_logger()
 
+_md: Any = MarkItDown()  # pyright: ignore[reportUnknownVariableType]
 
 def _validate_pdf(file: UploadFile, content: bytes) -> None:
     """Raise ValueError for non-PDF or oversized files."""
@@ -36,20 +40,24 @@ def _save_file(content: bytes, original_filename: str) -> str:
     return file_path
 
 
-def _extract_text(file_path: str, filename: str) -> tuple[str, int]:
-    """Extract text and page count from a PDF. Returns (text, page_count)."""
+def _get_page_count(file_path: str) -> int:
+    """Return PDF page count. Returns 0 on any error."""
     try:
-        doc = fitz.open(file_path)
-        page_count = len(doc)
-        pages = [
-            f"--- Page {i + 1} ---\n{doc[i].get_text()}"  # type: ignore[union-attr]
-            for i in range(page_count)
-            if doc[i].get_text().strip()  # type: ignore[union-attr]
-        ]
-        doc.close()
-        return "\n\n".join(pages), page_count
+        reader = PdfReader(file_path)
+        return len(reader.pages)
     except Exception:
-        logger.exception("Failed to extract text from PDF", filename=filename)
+        return 0
+
+
+def _extract_text(file_path: str, filename: str) -> tuple[str, int]:
+    """Extract text and page count from a document. Returns (text, page_count)."""
+    try:
+        result: Any = _md.convert(file_path)
+        text: str = str(result.text_content or "")
+        page_count = _get_page_count(file_path)
+        return text, page_count
+    except Exception:
+        logger.exception("Failed to extract text from file", filename=filename)
         return "", 0
 
 
