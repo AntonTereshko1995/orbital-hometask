@@ -60,7 +60,7 @@ async def upload_document_endpoint(
         conversation_id=document.conversation_id,
         filename=document.filename,
         page_count=document.page_count,
-        uploaded_at=document.uploaded_at,
+        created_at=document.created_at,
     )
 
 

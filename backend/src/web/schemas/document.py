@@ -10,6 +10,6 @@ class DocumentOut(BaseModel):
     conversation_id: str
     filename: str
     page_count: int
-    uploaded_at: datetime
+    created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -76,7 +76,7 @@ async def get_conversation_endpoint(
             id=doc.id,
             filename=doc.filename,
             page_count=doc.page_count,
-            uploaded_at=doc.uploaded_at,
+            created_at=doc.created_at,
         )
 
     return ConversationDetail(
@@ -107,7 +107,7 @@ async def update_conversation_endpoint(
             id=doc.id,
             filename=doc.filename,
             page_count=doc.page_count,
-            uploaded_at=doc.uploaded_at,
+            created_at=doc.created_at,
         )
 
     return ConversationDetail(

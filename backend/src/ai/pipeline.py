@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from ai.agent import agent
+import litellm
+
+from ai.agent import API_KEY, MODEL
+from ai.prompts import LEGAL_ASSISTANT_SYSTEM_PROMPT
 
 
 async def chat_with_document(
@@ -44,18 +47,35 @@ async def chat_with_document(
     prompt_parts.append(f"User: {user_message}")
     full_prompt = "\n".join(prompt_parts)
 
-    async with agent.run_stream(full_prompt) as result:
-        async for text in result.stream_text(delta=True):
-            yield text
+    messages = [
+        {"role": "system", "content": LEGAL_ASSISTANT_SYSTEM_PROMPT},
+        {"role": "user", "content": full_prompt},
+    ]
+
+    stream = await litellm.acompletion(model=MODEL, messages=messages, stream=True, api_key=API_KEY)  # type: ignore[misc]  # pyright: ignore[reportUnknownMemberType]
+    async for chunk in stream:  # type: ignore[union-attr]
+        content = chunk.choices[0].delta.content  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
+        if content:
+            yield content
 
 
 async def generate_title(user_message: str) -> str:
     """Generate a 3-5 word conversation title from the first user message."""
-    result = await agent.run(
-        f"Generate a concise 3-5 word title for a conversation that starts with: '{user_message}'. "
-        "Return only the title, nothing else."
+    response = await litellm.acompletion(  # type: ignore[misc]
+        model=MODEL,
+        api_key=API_KEY,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    f"Generate a concise 3-5 word title for a conversation that starts with: "
+                    f"'{user_message}'. Return only the title, nothing else."
+                ),
+            }
+        ],
     )
-    title = str(result.output).strip().strip('"').strip("'")
+    raw = response.choices[0].message.content  # type: ignore[union-attr]  # pyright: ignore[reportUnknownMemberType]
+    title = str(raw or "").strip().strip('"').strip("'")  # pyright: ignore[reportUnknownArgumentType]
     if len(title) > 100:
         title = title[:97] + "..."
     return title

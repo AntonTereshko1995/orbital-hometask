@@ -20,7 +20,7 @@ export interface UploadedDocument {
 	conversation_id: string;
 	filename: string;
 	page_count: number;
-	uploaded_at: string;
+	created_at: string;
 }
 
 export interface ConversationDetail extends Conversation {
