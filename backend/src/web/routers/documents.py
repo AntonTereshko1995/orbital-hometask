@@ -1,19 +1,33 @@
 from __future__ import annotations
 
 import os
+from typing import Annotated
 
 import structlog
-from db.session import get_session
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from services.conversation import get_conversation
-from services.document import get_document, upload_document
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import FileResponse
+
+from db.repositories import ConversationRepository, DocumentRepository
+from db.session import get_session
+from services.document import upload_document
 from web.schemas.document import DocumentOut
 
 logger = structlog.get_logger()
 
 router = APIRouter(tags=["documents"])
+
+
+async def get_conversation_repo(
+    session: AsyncSession = Depends(get_session),
+) -> ConversationRepository:
+    return ConversationRepository(session)
+
+
+async def get_document_repo(
+    session: AsyncSession = Depends(get_session),
+) -> DocumentRepository:
+    return DocumentRepository(session)
 
 
 # --------------------------------------------------------------------------- #
@@ -29,6 +43,7 @@ router = APIRouter(tags=["documents"])
 async def upload_document_endpoint(
     conversation_id: str,
     file: UploadFile,
+    conv_repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
     session: AsyncSession = Depends(get_session),
 ) -> DocumentOut:
     """Upload a PDF document for a conversation.
@@ -36,7 +51,7 @@ async def upload_document_endpoint(
     Only one document per conversation is allowed. Returns 409 if a document
     already exists.
     """
-    conversation = await get_conversation(session, conversation_id)
+    conversation = await conv_repo.get(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -67,10 +82,10 @@ async def upload_document_endpoint(
 @router.get("/api/documents/{document_id}/content")
 async def serve_document_file(
     document_id: str,
-    session: AsyncSession = Depends(get_session),
+    doc_repo: Annotated[DocumentRepository, Depends(get_document_repo)],
 ) -> FileResponse:
     """Serve the raw PDF file for download/viewing."""
-    document = await get_document(session, document_id)
+    document = await doc_repo.get(document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
 

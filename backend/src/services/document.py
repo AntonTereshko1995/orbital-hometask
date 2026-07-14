@@ -8,15 +8,16 @@ import structlog
 from fastapi import UploadFile
 from markitdown import MarkItDown  # type: ignore[import-untyped]
 from pypdf import PdfReader
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from db.models import Document
+from db.repositories import DocumentRepository
 
 logger = structlog.get_logger()
 
 _md: Any = MarkItDown()  # pyright: ignore[reportUnknownVariableType]
+
 
 def _validate_pdf(file: UploadFile, content: bytes) -> None:
     """Raise ValueError for non-PDF or oversized files."""
@@ -69,7 +70,9 @@ async def upload_document(
     Validates the file, saves to disk, extracts text, and stores metadata in DB.
     Raises ValueError if the conversation already has a document or file is not a PDF.
     """
-    existing = await get_document_for_conversation(session, conversation_id)
+    repo = DocumentRepository(session)
+
+    existing = await repo.get_for_conversation(conversation_id)
     if existing is not None:
         raise ValueError("Conversation already has a document. Only one document per conversation is allowed.")
 
@@ -95,23 +98,4 @@ async def upload_document(
         extracted_text=extracted_text if extracted_text else None,
         page_count=page_count,
     )
-    session.add(document)
-    await session.commit()
-    await session.refresh(document)
-    return document
-
-
-async def get_document(session: AsyncSession, document_id: str) -> Document | None:
-    """Get a document by its ID."""
-    stmt = select(Document).where(Document.id == document_id)
-    result = await session.execute(stmt)
-    return result.scalar_one_or_none()
-
-
-async def get_document_for_conversation(
-    session: AsyncSession, conversation_id: str
-) -> Document | None:
-    """Get the document for a conversation, if one exists."""
-    stmt = select(Document).where(Document.conversation_id == conversation_id)
-    result = await session.execute(stmt)
-    return result.scalar_one_or_none()
+    return await repo.save(document)

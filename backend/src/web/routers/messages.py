@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from typing import Annotated
 
 import structlog
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import StreamingResponse
+
 from ai.analysis import count_sources_cited
 from ai.pipeline import chat_with_document, generate_title
 from db.models import Message
+from db.repositories import ConversationRepository, DocumentRepository, MessageRepository
 from db.session import async_session as session_factory
 from db.session import get_session
-from fastapi import APIRouter, Depends, HTTPException
-from services.conversation import get_conversation, update_conversation
-from services.document import get_document_for_conversation
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import StreamingResponse
 from web.schemas.message import MessageCreate, MessageOut
 
 logger = structlog.get_logger()
@@ -22,8 +22,27 @@ logger = structlog.get_logger()
 router = APIRouter(tags=["messages"])
 
 
+async def get_conversation_repo(
+    session: AsyncSession = Depends(get_session),
+) -> ConversationRepository:
+    return ConversationRepository(session)
+
+
+async def get_document_repo(
+    session: AsyncSession = Depends(get_session),
+) -> DocumentRepository:
+    return DocumentRepository(session)
+
+
+async def get_message_repo(
+    session: AsyncSession = Depends(get_session),
+) -> MessageRepository:
+    return MessageRepository(session)
+
+
 # --------------------------------------------------------------------------- #
-# Helpers
+# Helpers (open their own sessions — called inside the SSE generator after
+# the request-scoped session has been closed)
 # --------------------------------------------------------------------------- #
 
 
@@ -32,24 +51,23 @@ async def _save_assistant_message(
 ) -> Message:
     """Persist the streamed assistant reply to the database."""
     async with session_factory() as session:
+        repo = MessageRepository(session)
         msg = Message(
             conversation_id=conversation_id,
             role="assistant",
             content=full_response,
             sources_cited=sources,
         )
-        session.add(msg)
-        await session.commit()
-        await session.refresh(msg)
-        return msg
+        return await repo.save(msg)
 
 
 async def _maybe_generate_title(conversation_id: str, user_content: str) -> None:
     """Generate and persist a conversation title on the first message."""
     async with session_factory() as session:
+        repo = ConversationRepository(session)
         try:
             title = await generate_title(user_content)
-            await update_conversation(session, conversation_id, title)
+            await repo.update_title(conversation_id, title)
             logger.info("Auto-generated title", conversation_id=conversation_id, title=title)
         except Exception:
             logger.exception("Failed to generate title", conversation_id=conversation_id)
@@ -66,20 +84,15 @@ async def _maybe_generate_title(conversation_id: str, user_content: str) -> None
 )
 async def list_messages(
     conversation_id: str,
-    session: AsyncSession = Depends(get_session),
+    conv_repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
+    msg_repo: Annotated[MessageRepository, Depends(get_message_repo)],
 ) -> list[MessageOut]:
     """List all messages in a conversation, ordered by creation time."""
-    conversation = await get_conversation(session, conversation_id)
+    conversation = await conv_repo.get(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    stmt = (
-        select(Message)
-        .where(Message.conversation_id == conversation_id)
-        .order_by(Message.created_at.asc())
-    )
-    result = await session.execute(stmt)
-    messages = list(result.scalars().all())
+    messages = await msg_repo.list_for_conversation(conversation_id)
 
     return [
         MessageOut(
@@ -98,10 +111,12 @@ async def list_messages(
 async def send_message(
     conversation_id: str,
     body: MessageCreate,
-    session: AsyncSession = Depends(get_session),
+    conv_repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
+    msg_repo: Annotated[MessageRepository, Depends(get_message_repo)],
+    doc_repo: Annotated[DocumentRepository, Depends(get_document_repo)],
 ) -> StreamingResponse:
     """Send a user message and stream back the AI response via SSE."""
-    conversation = await get_conversation(session, conversation_id)
+    conversation = await conv_repo.get(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -110,24 +125,14 @@ async def send_message(
         role="user",
         content=body.content,
     )
-    session.add(user_message)
-    await session.commit()
-    await session.refresh(user_message)
+    await msg_repo.save(user_message)
 
     logger.info("User message saved", conversation_id=conversation_id, message_id=user_message.id)
 
-    document = await get_document_for_conversation(session, conversation_id)
+    document = await doc_repo.get_for_conversation(conversation_id)
     document_text: str | None = document.extracted_text if document else None
 
-    stmt = (
-        select(Message)
-        .where(Message.conversation_id == conversation_id)
-        .where(Message.id != user_message.id)
-        .order_by(Message.created_at.asc())
-    )
-    result = await session.execute(stmt)
-    history_messages = list(result.scalars().all())
-
+    history_messages = await msg_repo.list_history(conversation_id, user_message.id)
     conversation_history: list[dict[str, str]] = [
         {"role": m.role, "content": m.content} for m in history_messages
     ]

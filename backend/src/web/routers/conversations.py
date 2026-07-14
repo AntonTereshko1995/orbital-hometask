@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from db.session import get_session
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
-from services.conversation import (
-    create_conversation,
-    delete_conversation,
-    get_conversation,
-    list_conversations,
-    update_conversation,
-)
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.repositories import ConversationRepository
+from db.session import get_session
 from web.schemas.conversation import (
     ConversationDetail,
     ConversationListItem,
@@ -20,6 +17,12 @@ from web.schemas.conversation import (
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 
+async def get_conversation_repo(
+    session: AsyncSession = Depends(get_session),
+) -> ConversationRepository:
+    return ConversationRepository(session)
+
+
 # --------------------------------------------------------------------------- #
 # Endpoints
 # --------------------------------------------------------------------------- #
@@ -27,10 +30,10 @@ router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 @router.get("", response_model=list[ConversationListItem])
 async def list_conversations_endpoint(
-    session: AsyncSession = Depends(get_session),
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
 ) -> list[ConversationListItem]:
     """List all conversations, ordered by most recently updated."""
-    conversations = await list_conversations(session)
+    conversations = await repo.list()
     return [
         ConversationListItem(
             id=c.id,
@@ -45,10 +48,12 @@ async def list_conversations_endpoint(
 
 @router.post("", response_model=ConversationDetail, status_code=201)
 async def create_conversation_endpoint(
-    session: AsyncSession = Depends(get_session),
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
 ) -> ConversationDetail:
     """Create a new conversation."""
-    conversation = await create_conversation(session)
+    from db.models import Conversation
+
+    conversation = await repo.save(Conversation())
     return ConversationDetail(
         id=conversation.id,
         title=conversation.title,
@@ -62,10 +67,10 @@ async def create_conversation_endpoint(
 @router.get("/{conversation_id}", response_model=ConversationDetail)
 async def get_conversation_endpoint(
     conversation_id: str,
-    session: AsyncSession = Depends(get_session),
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
 ) -> ConversationDetail:
     """Get a single conversation with its document info."""
-    conversation = await get_conversation(session, conversation_id)
+    conversation = await repo.get(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -93,10 +98,10 @@ async def get_conversation_endpoint(
 async def update_conversation_endpoint(
     conversation_id: str,
     body: ConversationUpdate,
-    session: AsyncSession = Depends(get_session),
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
 ) -> ConversationDetail:
     """Update a conversation's title."""
-    conversation = await update_conversation(session, conversation_id, body.title)
+    conversation = await repo.update_title(conversation_id, body.title)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -123,9 +128,9 @@ async def update_conversation_endpoint(
 @router.delete("/{conversation_id}", status_code=204)
 async def delete_conversation_endpoint(
     conversation_id: str,
-    session: AsyncSession = Depends(get_session),
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
 ) -> None:
     """Delete a conversation and all associated data."""
-    deleted = await delete_conversation(session, conversation_id)
+    deleted = await repo.delete(conversation_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Conversation not found")
