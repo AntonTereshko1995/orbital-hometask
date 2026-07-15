@@ -24,5 +24,5 @@ export interface UploadedDocument {
 }
 
 export interface ConversationDetail extends Conversation {
-	document?: UploadedDocument;
+	documents: UploadedDocument[];
 }

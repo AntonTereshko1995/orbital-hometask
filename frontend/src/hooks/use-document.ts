@@ -3,21 +3,21 @@ import * as api from "../lib/api";
 import type { UploadedDocument } from "../types";
 
 export function useDocument(conversationId: string | null) {
-	const [document, setDocument] = useState<UploadedDocument | null>(null);
+	const [documents, setDocuments] = useState<UploadedDocument[]>([]);
 	const [uploading, setUploading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const refresh = useCallback(async () => {
 		if (!conversationId) {
-			setDocument(null);
+			setDocuments([]);
 			return;
 		}
 		try {
 			setError(null);
 			const detail = await api.fetchConversation(conversationId);
-			setDocument(detail.document ?? null);
+			setDocuments(detail.documents ?? []);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to load document");
+			setError(err instanceof Error ? err.message : "Failed to load documents");
 		}
 	}, [conversationId]);
 
@@ -26,19 +26,19 @@ export function useDocument(conversationId: string | null) {
 	}, [refresh]);
 
 	const upload = useCallback(
-		async (file: File) => {
-			if (!conversationId) return null;
+		async (files: File[]) => {
+			if (!conversationId || files.length === 0) return;
+			setUploading(true);
+			setError(null);
 			try {
-				setUploading(true);
-				setError(null);
-				const doc = await api.uploadDocument(conversationId, file);
-				setDocument(doc);
-				return doc;
+				for (const file of files) {
+					const doc = await api.uploadDocument(conversationId, file);
+					setDocuments((prev) => [...prev, doc]);
+				}
 			} catch (err) {
 				setError(
 					err instanceof Error ? err.message : "Failed to upload document",
 				);
-				return null;
 			} finally {
 				setUploading(false);
 			}
@@ -47,7 +47,7 @@ export function useDocument(conversationId: string | null) {
 	);
 
 	return {
-		document,
+		documents,
 		uploading,
 		error,
 		upload,

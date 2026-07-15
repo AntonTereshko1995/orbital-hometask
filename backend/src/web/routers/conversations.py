@@ -60,7 +60,7 @@ async def create_conversation_endpoint(
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         has_document=False,
-        document=None,
+        documents=[],
     )
 
 
@@ -69,28 +69,28 @@ async def get_conversation_endpoint(
     conversation_id: str,
     repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
 ) -> ConversationDetail:
-    """Get a single conversation with its document info."""
+    """Get a single conversation with its documents info."""
     conversation = await repo.get(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    doc_info: DocumentInfo | None = None
-    if conversation.documents:
-        doc = conversation.documents[0]
-        doc_info = DocumentInfo(
+    docs = [
+        DocumentInfo(
             id=doc.id,
             filename=doc.filename,
             page_count=doc.page_count,
             created_at=doc.created_at,
         )
+        for doc in conversation.documents
+    ]
 
     return ConversationDetail(
         id=conversation.id,
         title=conversation.title,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        has_document=doc_info is not None,
-        document=doc_info,
+        has_document=len(docs) > 0,
+        documents=docs,
     )
 
 
@@ -105,23 +105,23 @@ async def update_conversation_endpoint(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    doc_info: DocumentInfo | None = None
-    if conversation.documents:
-        doc = conversation.documents[0]
-        doc_info = DocumentInfo(
+    docs = [
+        DocumentInfo(
             id=doc.id,
             filename=doc.filename,
             page_count=doc.page_count,
             created_at=doc.created_at,
         )
+        for doc in conversation.documents
+    ]
 
     return ConversationDetail(
         id=conversation.id,
         title=conversation.title,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        has_document=doc_info is not None,
-        document=doc_info,
+        has_document=len(docs) > 0,
+        documents=docs,
     )
 
 

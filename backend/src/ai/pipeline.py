@@ -10,27 +10,29 @@ from ai.prompts import LEGAL_ASSISTANT_SYSTEM_PROMPT
 
 async def chat_with_document(
     user_message: str,
-    document_text: str | None,
+    documents: list[dict[str, str]],
     conversation_history: list[dict[str, str]],
 ) -> AsyncIterator[str]:
     """Stream a response to the user's message, yielding text chunks.
 
-    Builds a prompt containing document context and conversation history,
-    then streams the response from the LLM.
+    Builds a prompt containing all document contexts (each labeled by filename)
+    and conversation history, then streams the response from the LLM.
     """
     prompt_parts: list[str] = []
 
-    if document_text:
-        prompt_parts.append(
-            "The following is the content of the document being discussed:\n\n"
-            "<document>\n"
-            f"{document_text}\n"
-            "</document>\n"
-        )
+    if documents:
+        count = len(documents)
+        label = "document" if count == 1 else "documents"
+        prompt_parts.append(f"You have access to {count} {label}:\n\n")
+        for doc in documents:
+            text = doc["text"].strip() if doc["text"].strip() else "[Content could not be extracted]"
+            prompt_parts.append(
+                f'<document name="{doc["filename"]}">\n{text}\n</document>\n\n'
+            )
     else:
         prompt_parts.append(
-            "No document has been uploaded yet. If the user asks about a document, "
-            "let them know they need to upload one first.\n"
+            "No documents have been uploaded yet. "
+            "Let the user know they need to upload a document first.\n"
         )
 
     if conversation_history:

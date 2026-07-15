@@ -68,13 +68,9 @@ async def upload_document(
     """Upload and process a PDF document for a conversation.
 
     Validates the file, saves to disk, extracts text, and stores metadata in DB.
-    Raises ValueError if the conversation already has a document or file is not a PDF.
+    Raises ValueError if the file is not a valid PDF.
     """
     repo = DocumentRepository(session)
-
-    existing = await repo.get_for_conversation(conversation_id)
-    if existing is not None:
-        raise ValueError("Conversation already has a document. Only one document per conversation is allowed.")
 
     content = await file.read()
     _validate_pdf(file, content)

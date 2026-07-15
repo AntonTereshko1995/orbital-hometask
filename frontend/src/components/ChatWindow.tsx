@@ -14,7 +14,7 @@ interface ChatWindowProps {
 	hasDocument: boolean;
 	conversationId: string | null;
 	onSend: (content: string) => void;
-	onUpload: (file: File) => void;
+	onUpload: (files: File[]) => void;
 }
 
 export function ChatWindow({
@@ -69,19 +69,14 @@ export function ChatWindow({
 					{hasDocument ? (
 						<div className="text-center">
 							<p className="text-sm text-neutral-500">
-								Document uploaded. Ask a question to get started.
+								Documents uploaded. Ask a question to get started.
 							</p>
 						</div>
 					) : (
 						<EmptyState onUpload={onUpload} />
 					)}
 				</div>
-				<ChatInput
-					onSend={onSend}
-					onUpload={onUpload}
-					disabled={streaming}
-					hasDocument={hasDocument}
-				/>
+				<ChatInput onSend={onSend} onUpload={onUpload} disabled={streaming} />
 			</div>
 		);
 	}
@@ -103,12 +98,7 @@ export function ChatWindow({
 				</div>
 			</div>
 
-			<ChatInput
-				onSend={onSend}
-				onUpload={onUpload}
-				disabled={streaming}
-				hasDocument={hasDocument}
-			/>
+			<ChatInput onSend={onSend} onUpload={onUpload} disabled={streaming} />
 		</div>
 	);
 }

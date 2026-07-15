@@ -28,7 +28,7 @@ export default function App() {
 	} = useMessages(selectedId);
 
 	const {
-		document,
+		documents,
 		upload,
 		refresh: refreshDocument,
 	} = useDocument(selectedId);
@@ -42,12 +42,10 @@ export default function App() {
 	);
 
 	const handleUpload = useCallback(
-		async (file: File) => {
-			const doc = await upload(file);
-			if (doc) {
-				refreshDocument();
-				refreshConversations();
-			}
+		async (files: File[]) => {
+			await upload(files);
+			refreshDocument();
+			refreshConversations();
 		},
 		[upload, refreshDocument, refreshConversations],
 	);
@@ -70,13 +68,13 @@ export default function App() {
 					error={messagesError}
 					streaming={streaming}
 					streamingContent={streamingContent}
-					hasDocument={!!document}
+					hasDocument={documents.length > 0}
 					conversationId={selectedId}
 					onSend={handleSend}
 					onUpload={handleUpload}
 				/>
 
-				<DocumentViewer document={document} />
+				<DocumentViewer documents={documents} />
 			</div>
 		</TooltipProvider>
 	);

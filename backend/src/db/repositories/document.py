@@ -16,3 +16,11 @@ class DocumentRepository(BaseRepository[Document]):
             select(Document).where(Document.conversation_id == conversation_id)
         )
         return result.scalar_one_or_none()
+
+    async def list_for_conversation(self, conversation_id: str) -> list[Document]:
+        result = await self._session.execute(
+            select(Document)
+            .where(Document.conversation_id == conversation_id)
+            .order_by(Document.created_at.asc())
+        )
+        return list(result.scalars().all())

@@ -129,8 +129,11 @@ async def send_message(
 
     logger.info("User message saved", conversation_id=conversation_id, message_id=user_message.id)
 
-    document = await doc_repo.get_for_conversation(conversation_id)
-    document_text: str | None = document.extracted_text if document else None
+    all_docs = await doc_repo.list_for_conversation(conversation_id)
+    doc_contexts: list[dict[str, str]] = [
+        {"filename": doc.filename, "text": doc.extracted_text or ""}
+        for doc in all_docs
+    ]
 
     history_messages = await msg_repo.list_history(conversation_id, user_message.id)
     conversation_history: list[dict[str, str]] = [
@@ -145,7 +148,7 @@ async def send_message(
         try:
             async for chunk in chat_with_document(
                 user_message=body.content,
-                document_text=document_text,
+                documents=doc_contexts,
                 conversation_history=conversation_history,
             ):
                 full_response += chunk

@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, FileText, Loader2 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -17,10 +17,11 @@ const MAX_WIDTH = 700;
 const DEFAULT_WIDTH = 400;
 
 interface DocumentViewerProps {
-	document: UploadedDocument | null;
+	documents: UploadedDocument[];
 }
 
-export function DocumentViewer({ document }: DocumentViewerProps) {
+export function DocumentViewer({ documents }: DocumentViewerProps) {
+	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [numPages, setNumPages] = useState<number>(0);
 	const [currentPage, setCurrentPage] = useState(1);
 	const [pdfLoading, setPdfLoading] = useState(true);
@@ -28,6 +29,29 @@ export function DocumentViewer({ document }: DocumentViewerProps) {
 	const [width, setWidth] = useState(DEFAULT_WIDTH);
 	const [dragging, setDragging] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
+
+	// Auto-select first document when list changes, or clear when list is empty
+	useEffect(() => {
+		if (documents.length === 0) {
+			setSelectedId(null);
+			return;
+		}
+		// If currently selected doc is no longer in the list, select the first one
+		if (!documents.find((d) => d.id === selectedId)) {
+			setSelectedId(documents[0]?.id ?? null);
+		}
+	}, [documents, selectedId]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: selectedId triggers page reset when switching documents
+	useEffect(() => {
+		setCurrentPage(1);
+		setNumPages(0);
+		setPdfLoading(true);
+		setPdfError(null);
+	}, [selectedId]);
+
+	const selectedDoc =
+		documents.find((d) => d.id === selectedId) ?? documents[0] ?? null;
 
 	const handleMouseDown = useCallback(
 		(e: React.MouseEvent) => {
@@ -58,21 +82,21 @@ export function DocumentViewer({ document }: DocumentViewerProps) {
 		[width],
 	);
 
-	const pdfPageWidth = width - 48; // account for px-4 padding on each side
+	const pdfPageWidth = width - 48;
 
-	if (!document) {
+	if (documents.length === 0) {
 		return (
 			<div
 				style={{ width }}
 				className="flex h-full flex-shrink-0 flex-col items-center justify-center border-l border-neutral-200 bg-neutral-50"
 			>
 				<FileText className="mb-3 h-10 w-10 text-neutral-300" />
-				<p className="text-sm text-neutral-400">No document uploaded</p>
+				<p className="text-sm text-neutral-400">No documents uploaded</p>
 			</div>
 		);
 	}
 
-	const pdfUrl = getDocumentUrl(document.id);
+	const pdfUrl = selectedDoc ? getDocumentUrl(selectedDoc.id) : null;
 
 	return (
 		<div
@@ -88,17 +112,48 @@ export function DocumentViewer({ document }: DocumentViewerProps) {
 				onMouseDown={handleMouseDown}
 			/>
 
-			{/* Header */}
-			<div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-				<div className="min-w-0">
-					<p className="truncate text-sm font-medium text-neutral-800">
-						{document.filename}
-					</p>
-					<p className="text-xs text-neutral-400">
-						{document.page_count} page{document.page_count !== 1 ? "s" : ""}
-					</p>
+			{/* Document tabs (only shown when multiple documents) */}
+			{documents.length > 1 && (
+				<div className="flex gap-1 overflow-x-auto border-b border-neutral-100 px-2 pt-2 flex-shrink-0">
+					{documents.map((doc) => {
+						const isActive = doc.id === selectedDoc?.id;
+						const displayName =
+							doc.filename.length > 22
+								? `${doc.filename.slice(0, 22)}…`
+								: doc.filename;
+						return (
+							<button
+								key={doc.id}
+								type="button"
+								className={`whitespace-nowrap rounded-t-md px-3 py-1.5 text-xs flex-shrink-0 transition-colors ${
+									isActive
+										? "border border-b-white border-neutral-200 bg-white font-medium text-neutral-800"
+										: "text-neutral-400 hover:text-neutral-600"
+								}`}
+								onClick={() => setSelectedId(doc.id)}
+								title={doc.filename}
+							>
+								{displayName}
+							</button>
+						);
+					})}
 				</div>
-			</div>
+			)}
+
+			{/* Header */}
+			{selectedDoc && (
+				<div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
+					<div className="min-w-0">
+						<p className="truncate text-sm font-medium text-neutral-800">
+							{selectedDoc.filename}
+						</p>
+						<p className="text-xs text-neutral-400">
+							{selectedDoc.page_count} page
+							{selectedDoc.page_count !== 1 ? "s" : ""}
+						</p>
+					</div>
+				</div>
+			)}
 
 			{/* PDF content */}
 			<div className="flex-1 overflow-y-auto p-4">
@@ -108,35 +163,38 @@ export function DocumentViewer({ document }: DocumentViewerProps) {
 					</div>
 				)}
 
-				<Document
-					file={pdfUrl}
-					onLoadSuccess={({ numPages: pages }) => {
-						setNumPages(pages);
-						setPdfLoading(false);
-						setPdfError(null);
-					}}
-					onLoadError={(error) => {
-						setPdfError(`Failed to load PDF: ${error.message}`);
-						setPdfLoading(false);
-					}}
-					loading={
-						<div className="flex items-center justify-center py-12">
-							<Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
-						</div>
-					}
-				>
-					{!pdfLoading && !pdfError && (
-						<Page
-							pageNumber={currentPage}
-							width={pdfPageWidth}
-							loading={
-								<div className="flex items-center justify-center py-12">
-									<Loader2 className="h-5 w-5 animate-spin text-neutral-300" />
-								</div>
-							}
-						/>
-					)}
-				</Document>
+				{pdfUrl && (
+					<Document
+						key={pdfUrl}
+						file={pdfUrl}
+						onLoadSuccess={({ numPages: pages }) => {
+							setNumPages(pages);
+							setPdfLoading(false);
+							setPdfError(null);
+						}}
+						onLoadError={(error) => {
+							setPdfError(`Failed to load PDF: ${error.message}`);
+							setPdfLoading(false);
+						}}
+						loading={
+							<div className="flex items-center justify-center py-12">
+								<Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
+							</div>
+						}
+					>
+						{!pdfLoading && !pdfError && (
+							<Page
+								pageNumber={currentPage}
+								width={pdfPageWidth}
+								loading={
+									<div className="flex items-center justify-center py-12">
+										<Loader2 className="h-5 w-5 animate-spin text-neutral-300" />
+									</div>
+								}
+							/>
+						)}
+					</Document>
+				)}
 			</div>
 
 			{/* Page navigation */}

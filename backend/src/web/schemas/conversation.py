@@ -30,7 +30,7 @@ class ConversationDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     has_document: bool
-    document: DocumentInfo | None = None
+    documents: list[DocumentInfo] = []
 
     model_config = {"from_attributes": True}
 
