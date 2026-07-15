@@ -12,6 +12,7 @@ interface ChatWindowProps {
 	streaming: boolean;
 	streamingContent: string;
 	hasDocument: boolean;
+	uploading: boolean;
 	conversationId: string | null;
 	onSend: (content: string) => void;
 	onUpload: (files: File[]) => void;
@@ -24,6 +25,7 @@ export function ChatWindow({
 	streaming,
 	streamingContent,
 	hasDocument,
+	uploading,
 	conversationId,
 	onSend,
 	onUpload,
@@ -73,7 +75,7 @@ export function ChatWindow({
 							</p>
 						</div>
 					) : (
-						<EmptyState onUpload={onUpload} />
+						<EmptyState onUpload={onUpload} uploading={uploading} />
 					)}
 				</div>
 				<ChatInput onSend={onSend} onUpload={onUpload} disabled={streaming} />

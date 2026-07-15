@@ -29,6 +29,7 @@ export default function App() {
 
 	const {
 		documents,
+		uploading,
 		upload,
 		refresh: refreshDocument,
 	} = useDocument(selectedId);
@@ -69,6 +70,7 @@ export default function App() {
 					streaming={streaming}
 					streamingContent={streamingContent}
 					hasDocument={documents.length > 0}
+					uploading={uploading}
 					conversationId={selectedId}
 					onSend={handleSend}
 					onUpload={handleUpload}
