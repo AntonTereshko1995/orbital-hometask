@@ -21,6 +21,7 @@ class Document(Base):
     file_path: Mapped[str] = mapped_column()
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     page_count: Mapped[int] = mapped_column(Integer, default=0)
+    embedding_path: Mapped[str | None] = mapped_column(nullable=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="documents")
     sections: Mapped[list[DocumentSection]] = relationship(

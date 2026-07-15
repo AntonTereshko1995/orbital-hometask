@@ -144,7 +144,12 @@ async def send_message(
 
     all_docs = await doc_repo.list_for_conversation(conversation_id)
     doc_contexts: list[DocContext] = [
-        {"id": doc.id, "filename": doc.filename, "text": doc.extracted_text or ""}
+        {
+            "id": doc.id,
+            "filename": doc.filename,
+            "text": doc.extracted_text or "",
+            "embedding_path": doc.embedding_path,
+        }
         for doc in all_docs
     ]
 

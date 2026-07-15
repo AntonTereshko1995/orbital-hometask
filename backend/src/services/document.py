@@ -14,7 +14,8 @@ from ai.agent import MODEL
 from config import settings
 from db.models import Document, DocumentSection
 from db.repositories import DocumentRepository, DocumentSectionRepository
-from services.document_index import parse_sections
+from services.document_index import ParsedSection, parse_sections
+from services.rag import generate_and_save_embeddings
 
 logger = structlog.get_logger()
 
@@ -70,7 +71,8 @@ async def upload_document(
     """Upload and process a PDF document for a conversation.
 
     Validates the file, saves to disk, extracts text, stores metadata in DB,
-    and indexes the document into sections for Level 2 agentic search.
+    indexes the document into sections for Level 2 search, and generates
+    embeddings for Level 3 semantic search.
     Raises ValueError if the file is not a valid PDF.
     """
     repo = DocumentRepository(session)
@@ -99,17 +101,28 @@ async def upload_document(
     )
     await repo.save(document)
 
-    await _index_sections(session, document.id, extracted_text)
+    # Parse sections once — reused by both the DB index and the embedding index.
+    parsed = parse_sections(extracted_text, MODEL) if extracted_text else []
+
+    await _index_sections(session, document.id, parsed)
+
+    embedding_path = await generate_and_save_embeddings(
+        document.id, parsed, settings.upload_dir
+    )
+    if embedding_path:
+        document.embedding_path = embedding_path
+        await repo.save(document)
 
     return document
 
 
-async def _index_sections(session: AsyncSession, document_id: str, text: str) -> None:
-    """Parse document text into sections and persist them. Errors are logged, never raised."""
-    if not text:
+async def _index_sections(
+    session: AsyncSession, document_id: str, parsed: list[ParsedSection]
+) -> None:
+    """Persist pre-parsed sections to DB. Errors are logged, never raised."""
+    if not parsed:
         return
     try:
-        parsed = parse_sections(text, MODEL)
         section_repo = DocumentSectionRepository(session)
         sections = [
             DocumentSection(

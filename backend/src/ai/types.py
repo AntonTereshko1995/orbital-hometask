@@ -16,3 +16,4 @@ class DocContext(TypedDict):
     id: str
     filename: str
     text: str
+    embedding_path: str | None
