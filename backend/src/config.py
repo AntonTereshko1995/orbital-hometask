@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pydantic_settings import BaseSettings
 
 
@@ -10,6 +9,8 @@ class Settings(BaseSettings):
     llm_model: str = ""
     upload_dir: str = "uploads"
     max_upload_size: int = 25 * 1024 * 1024  # 25MB
+    level2_token_threshold: int = 2_000 # 80_000
+    sub_agent_max_iterations: int = 10
 
     model_config = {"env_file": ".env"}
 

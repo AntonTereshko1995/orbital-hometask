@@ -21,8 +21,10 @@ services:
       dockerfile: backend/Dockerfile
     ports:
       - "${API_PORT:-8000}:8000"
+      - "5678:5678"
     volumes:
       - ./backend/src:/app/backend/src
+      - ./backend/tests:/app/backend/tests
       - ./alembic:/app/alembic
       - ./uploads:/app/uploads
       - ./pyproject.toml:/app/pyproject.toml
@@ -30,10 +32,17 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://orbital:orbital@db:5432/orbital_takehome
+      DEBUGPY: ${DEBUGPY:-0}
     depends_on:
       db:
         condition: service_healthy
-    command: uv run uvicorn web.app:app --reload --host 0.0.0.0 --port 8000
+    command:
+      - sh
+      - "-c"
+      - >-
+        [ "$$DEBUGPY" = "1" ]
+        && exec uv run python -m debugpy --wait-for-client --listen 0.0.0.0:5678 -m uvicorn web.app:app --host 0.0.0.0 --port 8000
+        || exec uv run uvicorn web.app:app --reload --host 0.0.0.0 --port 8000
 
   frontend:
     build:

@@ -10,9 +10,11 @@ from markitdown import MarkItDown  # type: ignore[import-untyped]
 from pypdf import PdfReader
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ai.agent import MODEL
 from config import settings
-from db.models import Document
-from db.repositories import DocumentRepository
+from db.models import Document, DocumentSection
+from db.repositories import DocumentRepository, DocumentSectionRepository
+from services.document_index import parse_sections
 
 logger = structlog.get_logger()
 
@@ -54,7 +56,7 @@ def _extract_text(file_path: str, filename: str) -> tuple[str, int]:
     """Extract text and page count from a document. Returns (text, page_count)."""
     try:
         result: Any = _md.convert(file_path)
-        text: str = str(result.text_content or "")
+        text: str = str(result.markdown or "")  # .text_content is deprecated; use .markdown
         page_count = _get_page_count(file_path)
         return text, page_count
     except Exception:
@@ -67,7 +69,8 @@ async def upload_document(
 ) -> Document:
     """Upload and process a PDF document for a conversation.
 
-    Validates the file, saves to disk, extracts text, and stores metadata in DB.
+    Validates the file, saves to disk, extracts text, stores metadata in DB,
+    and indexes the document into sections for Level 2 agentic search.
     Raises ValueError if the file is not a valid PDF.
     """
     repo = DocumentRepository(session)
@@ -94,4 +97,31 @@ async def upload_document(
         extracted_text=extracted_text if extracted_text else None,
         page_count=page_count,
     )
-    return await repo.save(document)
+    await repo.save(document)
+
+    await _index_sections(session, document.id, extracted_text)
+
+    return document
+
+
+async def _index_sections(session: AsyncSession, document_id: str, text: str) -> None:
+    """Parse document text into sections and persist them. Errors are logged, never raised."""
+    if not text:
+        return
+    try:
+        parsed = parse_sections(text, MODEL)
+        section_repo = DocumentSectionRepository(session)
+        sections = [
+            DocumentSection(
+                document_id=document_id,
+                section_index=ps.index,
+                heading=ps.heading,
+                content=ps.content,
+                token_count=ps.token_count,
+            )
+            for ps in parsed
+        ]
+        await section_repo.save_bulk(sections)
+        logger.info("Indexed document sections", document_id=document_id, count=len(sections))
+    except Exception:
+        logger.exception("Failed to index sections", document_id=document_id)

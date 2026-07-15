@@ -31,6 +31,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     # Environment
     "python-dotenv>=1.0.0",
+    "orjson>=3.9.0",
     "markitdown[pdf]>=0.1.0",
     "pypdf>=5.0.0",
 ]
@@ -55,11 +56,12 @@ ignore = ["E501", "B008"]
 [tool.ruff.lint.isort]
 known-first-party = ["web", "db", "services", "ai", "config"]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend/tests"]
+pythonpath = ["backend/src"]
+
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 extraPaths = ["backend/src"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["backend/tests"]

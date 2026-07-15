@@ -11,8 +11,14 @@ from starlette.responses import StreamingResponse
 
 from ai.analysis import count_sources_cited
 from ai.pipeline import chat_with_document, generate_title
+from ai.types import DocContext, SectionData
 from db.models import Message
-from db.repositories import ConversationRepository, DocumentRepository, MessageRepository
+from db.repositories import (
+    ConversationRepository,
+    DocumentRepository,
+    DocumentSectionRepository,
+    MessageRepository,
+)
 from db.session import async_session as session_factory
 from db.session import get_session
 from web.schemas.message import MessageCreate, MessageOut
@@ -38,6 +44,12 @@ async def get_message_repo(
     session: AsyncSession = Depends(get_session),
 ) -> MessageRepository:
     return MessageRepository(session)
+
+
+async def get_section_repo(
+    session: AsyncSession = Depends(get_session),
+) -> DocumentSectionRepository:
+    return DocumentSectionRepository(session)
 
 
 # --------------------------------------------------------------------------- #
@@ -114,6 +126,7 @@ async def send_message(
     conv_repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
     msg_repo: Annotated[MessageRepository, Depends(get_message_repo)],
     doc_repo: Annotated[DocumentRepository, Depends(get_document_repo)],
+    section_repo: Annotated[DocumentSectionRepository, Depends(get_section_repo)],
 ) -> StreamingResponse:
     """Send a user message and stream back the AI response via SSE."""
     conversation = await conv_repo.get(conversation_id)
@@ -130,10 +143,27 @@ async def send_message(
     logger.info("User message saved", conversation_id=conversation_id, message_id=user_message.id)
 
     all_docs = await doc_repo.list_for_conversation(conversation_id)
-    doc_contexts: list[dict[str, str]] = [
-        {"filename": doc.filename, "text": doc.extracted_text or ""}
+    doc_contexts: list[DocContext] = [
+        {"id": doc.id, "filename": doc.filename, "text": doc.extracted_text or ""}
         for doc in all_docs
     ]
+
+    # Load sections before the StreamingResponse is created so the request-scoped
+    # session (section_repo._session) is still open when we read from it.
+    sections_by_doc: dict[str, list[SectionData]] = {}
+    for doc in all_docs:
+        raw = await section_repo.list_for_document(doc.id)
+        sections_by_doc[doc.id] = [
+            SectionData(
+                id=s.id,
+                doc_id=s.document_id,
+                index=s.section_index,
+                heading=s.heading,
+                content=s.content,
+                token_count=s.token_count,
+            )
+            for s in raw
+        ]
 
     history_messages = await msg_repo.list_history(conversation_id, user_message.id)
     conversation_history: list[dict[str, str]] = [
@@ -150,6 +180,7 @@ async def send_message(
                 user_message=body.content,
                 documents=doc_contexts,
                 conversation_history=conversation_history,
+                sections_by_doc=sections_by_doc,
             ):
                 full_response += chunk
                 event_data = json.dumps({"type": "content", "content": chunk})

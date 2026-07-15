@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.models import Conversation
 from db.repositories import ConversationRepository
 from db.session import get_session
 from web.schemas.conversation import (
@@ -51,8 +52,6 @@ async def create_conversation_endpoint(
     repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
 ) -> ConversationDetail:
     """Create a new conversation."""
-    from db.models import Conversation
-
     conversation = await repo.save(Conversation())
     return ConversationDetail(
         id=conversation.id,

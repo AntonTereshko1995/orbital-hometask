@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from db.models.conversation import Conversation
+    from db.models.document_section import DocumentSection
 
 
 class Document(Base):
@@ -22,3 +23,6 @@ class Document(Base):
     page_count: Mapped[int] = mapped_column(Integer, default=0)
 
     conversation: Mapped[Conversation] = relationship(back_populates="documents")
+    sections: Mapped[list[DocumentSection]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
