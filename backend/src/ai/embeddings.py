@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import asyncio
-import json
 import math
-import os
 from typing import Any, cast
 
 import litellm
 import structlog
 
 from config import settings
+from services import embedding_store
 from services.document_index import ParsedSection
 
 logger = structlog.get_logger()
@@ -30,7 +28,7 @@ async def generate_and_save_embeddings(
     sections: list[ParsedSection],
     upload_dir: str,
 ) -> str | None:
-    """Embed all section texts, persist to JSON, return the file path.
+    """Embed all section texts, persist to disk via embedding_store, return the file path.
 
     Returns None when:
     - sections list is empty
@@ -41,7 +39,7 @@ async def generate_and_save_embeddings(
     if not sections:
         return None
     if not settings.embedding_model or not settings.embedding_api_key:
-        logger.warning("Embedding model/key not configured — skipping L3 indexing")
+        logger.warning("Embedding model/key not configured — skipping semantic RAG indexing")
         return None
 
     try:
@@ -65,23 +63,7 @@ async def generate_and_save_embeddings(
                 }
             )
 
-        embeddings_dir = os.path.join(upload_dir, "embeddings")
-        os.makedirs(embeddings_dir, exist_ok=True)
-        path = os.path.join(embeddings_dir, f"{doc_id}.json")
-
-        payload: dict[str, Any] = {
-            "doc_id": doc_id,
-            "model": settings.embedding_model,
-            "chunks": chunks,
-        }
-
-        def _write() -> None:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(payload, f)
-
-        await asyncio.to_thread(_write)
-        logger.info("Embeddings saved", doc_id=doc_id, path=path, chunk_count=len(chunks))
-        return path
+        return await embedding_store.save(doc_id, settings.embedding_model, chunks, upload_dir)
     except Exception as ex:
         logger.exception("Failed to generate or save embeddings", doc_id=doc_id, message=str(ex))
         return None
@@ -104,11 +86,7 @@ async def retrieve_top_k_chunks(
     )
     query_vec: list[float] = cast(list[float], q_response.data[0]["embedding"])  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType,reportArgumentType]
 
-    def _read() -> dict[str, Any]:
-        with open(embedding_path, encoding="utf-8") as f:
-            return json.load(f)  # type: ignore[no-any-return]
-
-    data: dict[str, Any] = await asyncio.to_thread(_read)
+    data = await embedding_store.load(embedding_path)
     chunks: list[dict[str, Any]] = data.get("chunks", [])
 
     scored: list[tuple[float, dict[str, Any]]] = [

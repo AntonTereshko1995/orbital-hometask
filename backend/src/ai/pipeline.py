@@ -5,14 +5,27 @@ from collections.abc import AsyncIterator
 import litellm
 import structlog
 
-from ai.agent import API_KEY, MODEL
-from ai.prompts import LEGAL_ASSISTANT_SYSTEM_PROMPT
+from ai.embeddings import retrieve_top_k_chunks
+from ai.llm import API_KEY, MODEL
 from ai.sub_agent import run_document_sub_agent
 from ai.types import DocContext, SectionData
 from config import settings
-from services.rag import retrieve_top_k_chunks
 
 logger = structlog.get_logger()
+
+_LEGAL_ASSISTANT_SYSTEM_PROMPT = (
+    "You are a helpful legal document assistant for commercial real estate lawyers. "
+    "You help lawyers review and understand documents during due diligence.\n\n"
+    "IMPORTANT INSTRUCTIONS:\n"
+    "- Answer questions based on the document content provided.\n"
+    "- When referencing specific parts of the document, cite the relevant section or clause.\n"
+    "- If the answer is not in the document, say so clearly. Do not fabricate information.\n"
+    "- Be concise and precise. Lawyers value accuracy over verbosity.\n"
+    "- When you reference specific content, mention the section, clause, or page.\n"
+    "- When information comes from a specific document, always state the document name "
+    "(e.g. 'According to commercial-lease-100-bishopsgate.pdf, Section 3...'). "
+    "If answering from multiple documents, attribute each piece of information to its source document."
+)
 
 
 def estimate_tokens(documents: list[DocContext]) -> int:
@@ -30,44 +43,44 @@ async def chat_with_document(
     conversation_history: list[dict[str, str]],
     sections_by_doc: dict[str, list[SectionData]] | None = None,
 ) -> AsyncIterator[str]:
-    """Stream a response, choosing Level 1, 2, or 3 based on document size.
+    """Stream a response, choosing a retrieval strategy based on document size.
 
-    Level 1: all document text injected directly into the prompt.
-    Level 2: a sub-agent navigates documents via tools and returns findings;
-             only those findings are included in the main prompt.
-    Level 3: user query is embedded; only the top-K semantically similar
-             chunks are injected into the main prompt.
+    full_context:    all document text injected directly into the prompt.
+    agentic_search:  a sub-agent navigates documents via tools and returns findings;
+                     only those findings are included in the main prompt.
+    semantic_rag:    user query is embedded; only the top-K semantically similar
+                     chunks are injected into the main prompt.
     """
     total_tokens = estimate_tokens(documents)
 
-    use_level3 = total_tokens > settings.rag_token_threshold and any(
+    use_semantic_rag = total_tokens > settings.rag_token_threshold and any(
         doc["embedding_path"] for doc in documents
     )
-    use_level2 = (
-        not use_level3
-        and total_tokens > settings.level2_token_threshold
+    use_agentic_search = (
+        not use_semantic_rag
+        and total_tokens > settings.agentic_search_threshold
         and total_tokens < settings.rag_token_threshold
         and sections_by_doc is not None
         and bool(documents)
     )
 
-    if use_level3:
+    if use_semantic_rag:
         logger.info(
             "Routing decision",
-            level=3,
+            strategy="semantic_rag",
             total_tokens=total_tokens,
             threshold=settings.rag_token_threshold,
         )
-        async for chunk in _level3_chat(user_message, documents, conversation_history):
+        async for chunk in _stream_semantic_rag(user_message, documents, conversation_history):
             yield chunk
-    elif use_level2:
+    elif use_agentic_search:
         logger.info(
             "Routing decision",
-            level=2,
+            strategy="agentic_search",
             total_tokens=total_tokens,
-            threshold=settings.level2_token_threshold,
+            threshold=settings.agentic_search_threshold,
         )
-        async for chunk in _level2_chat(
+        async for chunk in _stream_agentic_search(
             user_message,
             documents,
             conversation_history,
@@ -77,20 +90,20 @@ async def chat_with_document(
     else:
         logger.info(
             "Routing decision",
-            level=1,
+            strategy="full_context",
             total_tokens=total_tokens,
-            threshold=settings.level2_token_threshold,
+            threshold=settings.agentic_search_threshold,
         )
-        async for chunk in _level1_chat(user_message, documents, conversation_history):
+        async for chunk in _stream_full_context(user_message, documents, conversation_history):
             yield chunk
 
 
-async def _level1_chat(
+async def _stream_full_context(
     user_message: str,
     documents: list[DocContext],
     conversation_history: list[dict[str, str]],
 ) -> AsyncIterator[str]:
-    """Level 1: inject all document text into the prompt."""
+    """Inject all document text directly into the prompt and stream the response."""
     prompt_parts: list[str] = []
 
     if documents:
@@ -121,7 +134,7 @@ async def _level1_chat(
     full_prompt = "\n".join(prompt_parts)
 
     messages = [
-        {"role": "system", "content": LEGAL_ASSISTANT_SYSTEM_PROMPT},
+        {"role": "system", "content": _LEGAL_ASSISTANT_SYSTEM_PROMPT},
         {"role": "user", "content": full_prompt},
     ]
 
@@ -132,13 +145,13 @@ async def _level1_chat(
             yield content
 
 
-async def _level2_chat(
+async def _stream_agentic_search(
     user_message: str,
     documents: list[DocContext],
     conversation_history: list[dict[str, str]],
     sections_by_doc: dict[str, list[SectionData]],
 ) -> AsyncIterator[str]:
-    """Level 2: sub-agent explores documents, findings are fed to the main LLM."""
+    """Sub-agent explores documents via tools; findings feed into the main LLM."""
     doc_map = {doc["id"]: doc for doc in documents}
     findings = await run_document_sub_agent(user_message, doc_map, sections_by_doc)
 
@@ -166,7 +179,7 @@ async def _level2_chat(
     full_prompt = "\n".join(prompt_parts)
 
     messages = [
-        {"role": "system", "content": LEGAL_ASSISTANT_SYSTEM_PROMPT},
+        {"role": "system", "content": _LEGAL_ASSISTANT_SYSTEM_PROMPT},
         {"role": "user", "content": full_prompt},
     ]
 
@@ -177,12 +190,12 @@ async def _level2_chat(
             yield content
 
 
-async def _level3_chat(
+async def _stream_semantic_rag(
     user_message: str,
     documents: list[DocContext],
     conversation_history: list[dict[str, str]],
 ) -> AsyncIterator[str]:
-    """Level 3: semantic RAG — embed query, retrieve top-K chunks, stream answer."""
+    """Embed query, retrieve top-K chunks by cosine similarity, stream answer."""
     all_chunks: list[dict[str, object]] = []
 
     for doc in documents:
@@ -237,7 +250,7 @@ async def _level3_chat(
     full_prompt = "\n".join(prompt_parts)
 
     messages = [
-        {"role": "system", "content": LEGAL_ASSISTANT_SYSTEM_PROMPT},
+        {"role": "system", "content": _LEGAL_ASSISTANT_SYSTEM_PROMPT},
         {"role": "user", "content": full_prompt},
     ]
 

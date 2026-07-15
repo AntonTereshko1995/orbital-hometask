@@ -6,8 +6,8 @@ from typing import Any
 import litellm
 import structlog
 
-from ai.agent import API_KEY, MODEL
 from ai.document_tools import TOOL_SCHEMAS, dispatch_tool
+from ai.llm import API_KEY, MODEL
 from ai.types import DocContext, SectionData
 from config import settings
 

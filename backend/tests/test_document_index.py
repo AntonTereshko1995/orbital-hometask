@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from services.document_index import ParsedSection, parse_sections
 
-MODEL = "anthropic/claude-haiku-4-5-20251001"
-
 
 def test_parse_sections_empty() -> None:
-    result = parse_sections("", MODEL)
+    result = parse_sections("")
     assert result == []
 
 
 def test_parse_sections_whitespace_only() -> None:
-    result = parse_sections("   \n\n   ", MODEL)
+    result = parse_sections("   \n\n   ")
     assert result == []
 
 
@@ -22,7 +20,7 @@ def test_parse_sections_with_legal_headings() -> None:
         "Section 2 — Demise\n\n"
         "The landlord hereby demises the premises.\n"
     )
-    sections = parse_sections(text, MODEL)
+    sections = parse_sections(text)
     assert len(sections) == 2
     assert sections[0].heading == "Section 1 — Definitions"
     assert sections[1].heading == "Section 2 — Demise"
@@ -41,7 +39,7 @@ def test_parse_sections_strips_page_noise() -> None:
         "Section 2 — Demise\n\n"
         "Content two.\n"
     )
-    sections = parse_sections(text, MODEL)
+    sections = parse_sections(text)
     # "Page 1" should be stripped so exactly 2 sections are found
     assert len(sections) == 2
     assert sections[0].heading == "Section 1 — Definitions"
@@ -50,7 +48,7 @@ def test_parse_sections_strips_page_noise() -> None:
 
 def test_parse_sections_without_headings_falls_back() -> None:
     text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
-    sections = parse_sections(text, MODEL)
+    sections = parse_sections(text)
     assert len(sections) >= 1
     assert all(s.heading is None for s in sections)
     # All content must be present somewhere
@@ -61,7 +59,7 @@ def test_parse_sections_without_headings_falls_back() -> None:
 
 def test_parse_sections_paragraph_fallback_preserves_content() -> None:
     text = "\n\n".join(f"Paragraph {i} with some legal text about lease terms." for i in range(5))
-    sections = parse_sections(text, MODEL)
+    sections = parse_sections(text)
     assert len(sections) >= 1
     combined = " ".join(s.content for s in sections)
     assert "Paragraph 0" in combined
@@ -70,7 +68,7 @@ def test_parse_sections_paragraph_fallback_preserves_content() -> None:
 
 def test_parse_sections_article_heading() -> None:
     text = "ARTICLE I — GENERAL PROVISIONS\n\nSome general provisions.\n\nARTICLE II — RENT\n\nRent details.\n"
-    sections = parse_sections(text, MODEL)
+    sections = parse_sections(text)
     assert len(sections) == 2
     assert sections[0].heading == "ARTICLE I — GENERAL PROVISIONS"
     assert sections[1].heading == "ARTICLE II — RENT"
@@ -78,7 +76,7 @@ def test_parse_sections_article_heading() -> None:
 
 def test_parse_sections_schedule_heading() -> None:
     text = "Schedule 1 — Plan of Premises\n\nThe premises are shown on the attached plan.\n"
-    sections = parse_sections(text, MODEL)
+    sections = parse_sections(text)
     assert len(sections) == 1
     assert sections[0].heading == "Schedule 1 — Plan of Premises"
 
@@ -89,7 +87,7 @@ def test_parse_sections_indices_are_sequential() -> None:
         "Section 2 — Beta\n\nContent B.\n\n"
         "Section 3 — Gamma\n\nContent C.\n"
     )
-    sections = parse_sections(text, MODEL)
+    sections = parse_sections(text)
     assert [s.index for s in sections] == list(range(len(sections)))
 
 

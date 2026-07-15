@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ai.embeddings import cosine_similarity, generate_and_save_embeddings, retrieve_top_k_chunks
 from services.document_index import ParsedSection
-from services.rag import cosine_similarity, generate_and_save_embeddings, retrieve_top_k_chunks
 
 # ---------------------------------------------------------------------------
 # cosine_similarity — pure math, no mocking needed
@@ -57,7 +57,9 @@ FAKE_EMBEDDING = [0.1] * FAKE_DIM
 
 def _make_mock_response(count: int) -> MagicMock:
     mock_response = MagicMock()
-    mock_response.data = [MagicMock(embedding=FAKE_EMBEDDING) for _ in range(count)]
+    # Use plain dicts so that response.data[i]["embedding"] (subscript) returns the
+    # actual embedding list, matching litellm's real response structure.
+    mock_response.data = [{"embedding": FAKE_EMBEDDING} for _ in range(count)]
     return mock_response
 
 
@@ -67,8 +69,8 @@ async def test_generate_saves_json_file(tmp_path: Path, monkeypatch: pytest.Monk
         ParsedSection(index=0, heading="Section 1", content="Rent is £5000 per month.", token_count=8),
         ParsedSection(index=1, heading=None, content="Term is ten (10) years.", token_count=6),
     ]
-    monkeypatch.setattr("services.rag.settings.embedding_model", "openai/text-embedding-3-small")
-    monkeypatch.setattr("services.rag.settings.embedding_api_key", "sk-fake")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_model", "openai/text-embedding-3-small")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_api_key", "sk-fake")
 
     with patch("litellm.aembedding", new_callable=AsyncMock, return_value=_make_mock_response(2)):
         path = await generate_and_save_embeddings("doc123", sections, str(tmp_path))
@@ -97,7 +99,7 @@ async def test_generate_saves_json_file(tmp_path: Path, monkeypatch: pytest.Monk
 async def test_generate_returns_none_when_model_unconfigured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("services.rag.settings.embedding_model", "")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_model", "")
     sections = [ParsedSection(index=0, heading=None, content="x", token_count=1)]
     result = await generate_and_save_embeddings("doc1", sections, str(tmp_path))
     assert result is None
@@ -107,8 +109,8 @@ async def test_generate_returns_none_when_model_unconfigured(
 async def test_generate_returns_none_when_api_key_unconfigured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("services.rag.settings.embedding_model", "openai/text-embedding-3-small")
-    monkeypatch.setattr("services.rag.settings.embedding_api_key", "")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_model", "openai/text-embedding-3-small")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_api_key", "")
     sections = [ParsedSection(index=0, heading=None, content="x", token_count=1)]
     result = await generate_and_save_embeddings("doc1", sections, str(tmp_path))
     assert result is None
@@ -124,8 +126,8 @@ async def test_generate_returns_none_for_empty_sections(tmp_path: Path) -> None:
 async def test_generate_returns_none_on_api_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("services.rag.settings.embedding_model", "openai/text-embedding-3-small")
-    monkeypatch.setattr("services.rag.settings.embedding_api_key", "sk-fake")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_model", "openai/text-embedding-3-small")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_api_key", "sk-fake")
     sections = [ParsedSection(index=0, heading=None, content="x", token_count=1)]
 
     with patch("litellm.aembedding", new_callable=AsyncMock, side_effect=RuntimeError("API error")):
@@ -138,8 +140,8 @@ async def test_generate_returns_none_on_api_error(
 async def test_generate_creates_embeddings_subdir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("services.rag.settings.embedding_model", "openai/text-embedding-3-small")
-    monkeypatch.setattr("services.rag.settings.embedding_api_key", "sk-fake")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_model", "openai/text-embedding-3-small")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_api_key", "sk-fake")
     sections = [ParsedSection(index=0, heading="H", content="content", token_count=1)]
 
     with patch("litellm.aembedding", new_callable=AsyncMock, return_value=_make_mock_response(1)):
@@ -188,14 +190,14 @@ def _write_embedding_file(tmp_path: Path, chunks: list[dict]) -> Path:
 async def test_retrieve_returns_top_k_most_similar(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("services.rag.settings.embedding_model", "openai/text-embedding-3-small")
-    monkeypatch.setattr("services.rag.settings.embedding_api_key", "sk-fake")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_model", "openai/text-embedding-3-small")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_api_key", "sk-fake")
 
     emb_file = _write_embedding_file(tmp_path, _CHUNKS_DATA)
 
     # Query vector aligned with "Rent" chunk
     mock_response = MagicMock()
-    mock_response.data = [MagicMock(embedding=[1.0, 0.0, 0.0])]
+    mock_response.data = [{"embedding": [1.0, 0.0, 0.0]}]
 
     with patch("litellm.aembedding", new_callable=AsyncMock, return_value=mock_response):
         results = await retrieve_top_k_chunks(
@@ -212,13 +214,13 @@ async def test_retrieve_returns_top_k_most_similar(
 async def test_retrieve_respects_top_k_limit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("services.rag.settings.embedding_model", "openai/text-embedding-3-small")
-    monkeypatch.setattr("services.rag.settings.embedding_api_key", "sk-fake")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_model", "openai/text-embedding-3-small")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_api_key", "sk-fake")
 
     emb_file = _write_embedding_file(tmp_path, _CHUNKS_DATA)
 
     mock_response = MagicMock()
-    mock_response.data = [MagicMock(embedding=[1.0, 0.0, 0.0])]
+    mock_response.data = [{"embedding": [1.0, 0.0, 0.0]}]
 
     with patch("litellm.aembedding", new_callable=AsyncMock, return_value=mock_response):
         results = await retrieve_top_k_chunks(
@@ -234,14 +236,14 @@ async def test_retrieve_respects_top_k_limit(
 async def test_retrieve_returns_sorted_by_similarity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("services.rag.settings.embedding_model", "openai/text-embedding-3-small")
-    monkeypatch.setattr("services.rag.settings.embedding_api_key", "sk-fake")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_model", "openai/text-embedding-3-small")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_api_key", "sk-fake")
 
     emb_file = _write_embedding_file(tmp_path, _CHUNKS_DATA)
 
     # Query between Rent and Term vectors — Rent should score higher
     mock_response = MagicMock()
-    mock_response.data = [MagicMock(embedding=[0.9, 0.1, 0.0])]
+    mock_response.data = [{"embedding": [0.9, 0.1, 0.0]}]
 
     with patch("litellm.aembedding", new_callable=AsyncMock, return_value=mock_response):
         results = await retrieve_top_k_chunks(
@@ -258,13 +260,13 @@ async def test_retrieve_returns_sorted_by_similarity(
 async def test_retrieve_top_k_larger_than_chunks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("services.rag.settings.embedding_model", "openai/text-embedding-3-small")
-    monkeypatch.setattr("services.rag.settings.embedding_api_key", "sk-fake")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_model", "openai/text-embedding-3-small")
+    monkeypatch.setattr("ai.embeddings.settings.embedding_api_key", "sk-fake")
 
     emb_file = _write_embedding_file(tmp_path, _CHUNKS_DATA)
 
     mock_response = MagicMock()
-    mock_response.data = [MagicMock(embedding=[1.0, 0.0, 0.0])]
+    mock_response.data = [{"embedding": [1.0, 0.0, 0.0]}]
 
     with patch("litellm.aembedding", new_callable=AsyncMock, return_value=mock_response):
         results = await retrieve_top_k_chunks(

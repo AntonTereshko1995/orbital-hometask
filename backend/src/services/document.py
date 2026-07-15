@@ -10,12 +10,11 @@ from markitdown import MarkItDown  # type: ignore[import-untyped]
 from pypdf import PdfReader
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai.agent import MODEL
+from ai.embeddings import generate_and_save_embeddings
 from config import settings
 from db.models import Document, DocumentSection
 from db.repositories import DocumentRepository, DocumentSectionRepository
 from services.document_index import ParsedSection, parse_sections
-from services.rag import generate_and_save_embeddings
 
 logger = structlog.get_logger()
 
@@ -102,7 +101,7 @@ async def upload_document(
     await repo.save(document)
 
     # Parse sections once — reused by both the DB index and the embedding index.
-    parsed = parse_sections(extracted_text, MODEL) if extracted_text else []
+    parsed = parse_sections(extracted_text) if extracted_text else []
 
     await _index_sections(session, document.id, parsed)
 
