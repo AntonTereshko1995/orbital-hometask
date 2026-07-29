@@ -17,10 +17,11 @@ export interface Message {
 
 export interface UploadedDocument {
 	id: string;
-	conversation_id: string;
 	filename: string;
+	file_size: number;
 	page_count: number;
 	created_at: string;
+	reused_from_library?: boolean;
 }
 
 export interface ConversationDetail extends Conversation {

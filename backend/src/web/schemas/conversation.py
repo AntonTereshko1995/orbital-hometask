@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class DocumentInfo(BaseModel):
     id: str
     filename: str
+    file_size: int
     page_count: int
     created_at: datetime
 

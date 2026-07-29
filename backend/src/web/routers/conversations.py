@@ -77,6 +77,7 @@ async def get_conversation_endpoint(
         DocumentInfo(
             id=doc.id,
             filename=doc.filename,
+            file_size=doc.file_size,
             page_count=doc.page_count,
             created_at=doc.created_at,
         )
@@ -108,6 +109,7 @@ async def update_conversation_endpoint(
         DocumentInfo(
             id=doc.id,
             filename=doc.filename,
+            file_size=doc.file_size,
             page_count=doc.page_count,
             created_at=doc.created_at,
         )

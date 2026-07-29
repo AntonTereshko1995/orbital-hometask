@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from db.models.base import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from db.models.associations import conversation_documents
+from db.models.base import Base
 
 if TYPE_CHECKING:
     from db.models.document import Document
@@ -19,5 +21,7 @@ class Conversation(Base):
         back_populates="conversation", cascade="all, delete-orphan"
     )
     documents: Mapped[list[Document]] = relationship(
-        back_populates="conversation", cascade="all, delete-orphan"
+        "Document",
+        secondary=conversation_documents,
+        back_populates="conversations",
     )

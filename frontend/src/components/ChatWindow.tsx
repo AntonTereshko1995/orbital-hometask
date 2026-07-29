@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import type { Message } from "../types";
+import type { Message, UploadedDocument } from "../types";
 import { ChatInput } from "./ChatInput";
 import { EmptyState } from "./EmptyState";
 import { MessageBubble, StreamingBubble } from "./MessageBubble";
@@ -14,8 +14,10 @@ interface ChatWindowProps {
 	hasDocument: boolean;
 	uploading: boolean;
 	conversationId: string | null;
+	libraryDocuments: UploadedDocument[];
 	onSend: (content: string) => void;
 	onUpload: (files: File[]) => void;
+	onAttachFromLibrary: (documentId: string) => void;
 }
 
 export function ChatWindow({
@@ -27,8 +29,10 @@ export function ChatWindow({
 	hasDocument,
 	uploading,
 	conversationId,
+	libraryDocuments,
 	onSend,
 	onUpload,
+	onAttachFromLibrary,
 }: ChatWindowProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -75,10 +79,22 @@ export function ChatWindow({
 							</p>
 						</div>
 					) : (
-						<EmptyState onUpload={onUpload} uploading={uploading} />
+						<EmptyState
+							onUpload={onUpload}
+							onAttachFromLibrary={onAttachFromLibrary}
+							libraryDocuments={libraryDocuments}
+							uploading={uploading}
+						/>
 					)}
 				</div>
-				<ChatInput onSend={onSend} onUpload={onUpload} disabled={streaming} />
+				<ChatInput
+					onSend={onSend}
+					onUpload={onUpload}
+					onAttachFromLibrary={onAttachFromLibrary}
+					libraryDocuments={libraryDocuments}
+					uploading={uploading}
+					disabled={streaming}
+				/>
 			</div>
 		);
 	}
@@ -100,7 +116,14 @@ export function ChatWindow({
 				</div>
 			</div>
 
-			<ChatInput onSend={onSend} onUpload={onUpload} disabled={streaming} />
+			<ChatInput
+				onSend={onSend}
+				onUpload={onUpload}
+				onAttachFromLibrary={onAttachFromLibrary}
+				libraryDocuments={libraryDocuments}
+				uploading={uploading}
+				disabled={streaming}
+			/>
 		</div>
 	);
 }

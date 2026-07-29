@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from httpx import AsyncClient
 
+from tests.conftest import _conv, _doc
+
 # conftest.py provides: client, mock_conv_repo, conversation fixtures
 
 
@@ -69,6 +71,21 @@ async def test_get_conversation_found(client: AsyncClient) -> None:
     data = response.json()
     assert data["id"] == "conv0000001test"
     assert data["documents"] == []
+
+
+async def test_get_conversation_with_document(
+    client: AsyncClient, mock_conv_repo: MagicMock
+) -> None:
+    doc = _doc()
+    conv = _conv(documents=[doc])
+    mock_conv_repo.get = AsyncMock(return_value=conv)
+
+    response = await client.get("/api/conversations/conv0000001test")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["has_document"] is True
+    assert len(data["documents"]) == 1
+    assert data["documents"][0]["file_size"] == 1000
 
 
 async def test_get_conversation_not_found(

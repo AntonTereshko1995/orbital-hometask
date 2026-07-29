@@ -8,9 +8,9 @@ import structlog
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from web.routers import conversations, documents, messages
 
 from alembic import command
+from web.routers import conversations, documents, messages, storage
 
 logger = structlog.get_logger()
 
@@ -39,3 +39,4 @@ app.add_middleware(
 app.include_router(conversations.router)
 app.include_router(messages.router)
 app.include_router(documents.router)
+app.include_router(storage.router)

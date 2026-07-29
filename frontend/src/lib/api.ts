@@ -86,6 +86,43 @@ export async function uploadDocument(
 	return handleResponse<UploadedDocument>(res);
 }
 
+export async function attachFromLibrary(
+	conversationId: string,
+	documentId: string,
+): Promise<UploadedDocument> {
+	const res = await fetch(
+		`${BASE}/conversations/${conversationId}/documents/from-library`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ document_id: documentId }),
+		},
+	);
+	return handleResponse<UploadedDocument>(res);
+}
+
+export async function fetchLibrary(): Promise<UploadedDocument[]> {
+	const res = await fetch(`${BASE}/storage`);
+	return handleResponse<UploadedDocument[]>(res);
+}
+
+export async function uploadToLibrary(file: File): Promise<UploadedDocument> {
+	const formData = new FormData();
+	formData.append("file", file);
+	const res = await fetch(`${BASE}/storage`, {
+		method: "POST",
+		body: formData,
+	});
+	return handleResponse<UploadedDocument>(res);
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+	const res = await fetch(`${BASE}/documents/${id}`, {
+		method: "DELETE",
+	});
+	await handleEmptyResponse(res);
+}
+
 export function getDocumentUrl(documentId: string): string {
 	return `${BASE}/documents/${documentId}/content`;
 }

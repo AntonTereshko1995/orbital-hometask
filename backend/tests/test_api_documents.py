@@ -36,7 +36,7 @@ async def test_upload_document_success(
     with patch(
         "web.routers.documents.upload_document",
         new_callable=AsyncMock,
-        return_value=document,
+        return_value=(document, False),
     ):
         response = await client.post(
             "/api/conversations/conv0000001test/documents",
@@ -47,8 +47,29 @@ async def test_upload_document_success(
     data = response.json()
     assert data["id"] == "doc0000000001"
     assert data["filename"] == "test.pdf"
-    assert data["conversation_id"] == "conv0000001test"
+    assert data["file_size"] == 1000
     assert data["page_count"] == 5
+    assert data["reused_from_library"] is False
+    assert "conversation_id" not in data
+
+
+async def test_upload_document_duplicate_reuses_library(
+    client: AsyncClient, mock_conv_repo: MagicMock
+) -> None:
+    document = _doc()
+
+    with patch(
+        "web.routers.documents.upload_document",
+        new_callable=AsyncMock,
+        return_value=(document, True),
+    ):
+        response = await client.post(
+            "/api/conversations/conv0000001test/documents",
+            files={"file": ("test.pdf", _FAKE_PDF, "application/pdf")},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["reused_from_library"] is True
 
 
 async def test_upload_document_invalid_file_returns_400(
@@ -66,6 +87,77 @@ async def test_upload_document_invalid_file_returns_400(
 
     assert response.status_code == 400
     assert "PDF" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/conversations/{id}/documents/from-library
+# ---------------------------------------------------------------------------
+
+
+async def test_attach_from_library_success(
+    client: AsyncClient, mock_conv_repo: MagicMock, mock_doc_repo: MagicMock
+) -> None:
+    document = _doc()
+    mock_doc_repo.get = AsyncMock(return_value=document)
+
+    response = await client.post(
+        "/api/conversations/conv0000001test/documents/from-library",
+        json={"document_id": "doc0000000001"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["id"] == "doc0000000001"
+    assert data["reused_from_library"] is True
+    mock_doc_repo.attach_to_conversation.assert_called_once_with(
+        "doc0000000001", "conv0000001test"
+    )
+
+
+async def test_attach_from_library_conversation_not_found(
+    client: AsyncClient, mock_conv_repo: MagicMock
+) -> None:
+    mock_conv_repo.get = AsyncMock(return_value=None)
+    response = await client.post(
+        "/api/conversations/nonexistent/documents/from-library",
+        json={"document_id": "doc0000000001"},
+    )
+    assert response.status_code == 404
+    assert "Conversation not found" in response.json()["detail"]
+
+
+async def test_attach_from_library_document_not_found(
+    client: AsyncClient, mock_conv_repo: MagicMock, mock_doc_repo: MagicMock
+) -> None:
+    mock_doc_repo.get = AsyncMock(return_value=None)
+    response = await client.post(
+        "/api/conversations/conv0000001test/documents/from-library",
+        json={"document_id": "nonexistent"},
+    )
+    assert response.status_code == 404
+    assert "Document not found" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/documents/{id}
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_document_returns_204(
+    client: AsyncClient, mock_doc_repo: MagicMock
+) -> None:
+    mock_doc_repo.delete = AsyncMock(return_value=True)
+    response = await client.delete("/api/documents/doc0000000001")
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+async def test_delete_document_not_found(
+    client: AsyncClient, mock_doc_repo: MagicMock
+) -> None:
+    mock_doc_repo.delete = AsyncMock(return_value=False)
+    response = await client.delete("/api/documents/nonexistent")
+    assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import uuid
 from typing import Any
@@ -19,6 +20,10 @@ from services.document_index import ParsedSection, parse_sections
 logger = structlog.get_logger()
 
 _md: Any = MarkItDown()  # pyright: ignore[reportUnknownVariableType]
+
+
+def _sha256(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
 
 
 def _validate_pdf(file: UploadFile, content: bytes) -> None:
@@ -56,7 +61,7 @@ def _extract_text(file_path: str, filename: str) -> tuple[str, int]:
     """Extract text and page count from a document. Returns (text, page_count)."""
     try:
         result: Any = _md.convert(file_path)
-        text: str = str(result.markdown or "")  # .text_content is deprecated; use .markdown
+        text: str = str(result.markdown or "")
         page_count = _get_page_count(file_path)
         return text, page_count
     except Exception:
@@ -64,24 +69,34 @@ def _extract_text(file_path: str, filename: str) -> tuple[str, int]:
         return "", 0
 
 
-async def upload_document(
-    session: AsyncSession, conversation_id: str, file: UploadFile
-) -> Document:
-    """Upload and process a PDF document for a conversation.
+async def upload_to_library(
+    session: AsyncSession, file: UploadFile
+) -> tuple[Document, bool]:
+    """Upload a PDF to the shared library (not tied to any conversation).
 
-    Validates the file, saves to disk, extracts text, stores metadata in DB,
-    indexes the document into sections for Level 2 search, and generates
-    embeddings for Level 3 semantic search.
-    Raises ValueError if the file is not a valid PDF.
+    Returns (document, is_duplicate). When is_duplicate is True the file already
+    existed in the library and is returned as-is — no disk write or reprocessing.
     """
-    repo = DocumentRepository(session)
+    doc_repo = DocumentRepository(session)
 
     content = await file.read()
     _validate_pdf(file, content)
+    file_size = len(content)
+    content_hash = _sha256(content)
 
     original_filename = file.filename or "document.pdf"
+
+    existing = await doc_repo.find_duplicate(content_hash)
+    if existing is not None:
+        logger.info(
+            "Duplicate document detected — returning library copy",
+            document_id=existing.id,
+            filename=original_filename,
+        )
+        return existing, True
+
     file_path = _save_file(content, original_filename)
-    logger.info("Saved uploaded PDF", filename=original_filename, path=file_path, size=len(content))
+    logger.info("Saved PDF to library", filename=original_filename, path=file_path, size=file_size)
 
     extracted_text, page_count = _extract_text(file_path, original_filename)
     logger.info(
@@ -92,15 +107,86 @@ async def upload_document(
     )
 
     document = Document(
-        conversation_id=conversation_id,
         filename=original_filename,
         file_path=file_path,
+        file_size=file_size,
+        content_hash=content_hash,
         extracted_text=extracted_text if extracted_text else None,
         page_count=page_count,
     )
-    await repo.save(document)
+    await doc_repo.save(document)
 
-    # Parse sections once — reused by both the DB index and the embedding index.
+    parsed = parse_sections(extracted_text) if extracted_text else []
+    await _index_sections(session, document.id, parsed)
+
+    embedding_path = await generate_and_save_embeddings(document.id, parsed, settings.upload_dir)
+    if embedding_path:
+        document.embedding_path = embedding_path
+        await doc_repo.save(document)
+
+    return document, False
+
+
+async def upload_document(
+    session: AsyncSession, conversation_id: str, file: UploadFile
+) -> tuple[Document, bool]:
+    """Upload and process a PDF document for a conversation.
+
+    Returns (document, reused_from_library). When reused_from_library is True
+    the file already existed in the library (matched by SHA-256 content hash) and
+    was simply attached to the conversation — no new file was written to disk and
+    no re-processing occurred.
+    """
+    doc_repo = DocumentRepository(session)
+
+    content = await file.read()
+    _validate_pdf(file, content)
+    file_size = len(content)
+    content_hash = _sha256(content)
+
+    original_filename = file.filename or "document.pdf"
+
+    existing = await doc_repo.find_duplicate(content_hash)
+    if existing is not None:
+        await doc_repo.attach_to_conversation(existing.id, conversation_id)
+        logger.info(
+            "Duplicate document detected — reusing library copy",
+            document_id=existing.id,
+            filename=original_filename,
+            conversation_id=conversation_id,
+        )
+        return existing, True
+
+    file_path = _save_file(content, original_filename)
+    logger.info(
+        "Saved uploaded PDF",
+        filename=original_filename,
+        path=file_path,
+        size=file_size,
+    )
+
+    extracted_text, page_count = _extract_text(file_path, original_filename)
+    logger.info(
+        "Extracted text from PDF",
+        filename=original_filename,
+        page_count=page_count,
+        text_length=len(extracted_text),
+    )
+
+    document = Document(
+        filename=original_filename,
+        file_path=file_path,
+        file_size=file_size,
+        content_hash=content_hash,
+        extracted_text=extracted_text if extracted_text else None,
+        page_count=page_count,
+    )
+    await doc_repo.save(document)
+
+    # Attach to the conversation
+    await doc_repo.attach_to_conversation(document.id, conversation_id)
+
+    # Parse sections — reused by both the DB index and the embedding index.
     parsed = parse_sections(extracted_text) if extracted_text else []
 
     await _index_sections(session, document.id, parsed)
@@ -110,9 +196,9 @@ async def upload_document(
     )
     if embedding_path:
         document.embedding_path = embedding_path
-        await repo.save(document)
+        await doc_repo.save(document)
 
-    return document
+    return document, False
 
 
 async def _index_sections(

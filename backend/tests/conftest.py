@@ -17,6 +17,7 @@ from web.app import app
 from web.routers import conversations as conv_router
 from web.routers import documents as doc_router
 from web.routers import messages as msg_router
+from web.routers import storage as storage_router
 
 _TS = datetime(2024, 1, 1, 12, 0, 0)
 
@@ -44,14 +45,14 @@ def _conv(
 
 def _doc(
     id: str = "doc0000000001",
-    conversation_id: str = "conv0000001test",
     filename: str = "test.pdf",
     file_path: str = "/tmp/test.pdf",
+    file_size: int = 1000,
 ) -> MagicMock:
     m = MagicMock()
     m.id = id
-    m.conversation_id = conversation_id
     m.filename = filename
+    m.file_size = file_size
     m.page_count = 5
     m.file_path = file_path
     m.extracted_text = "Full document text."
@@ -91,8 +92,6 @@ def mock_conv_repo(conversation: MagicMock) -> MagicMock:
     repo = MagicMock()
     repo.get = AsyncMock(return_value=conversation)
     repo.list = AsyncMock(return_value=[conversation])
-    # Return pre-configured mock so Pydantic serialization works regardless of
-    # whether SQLAlchemy applies column defaults at construction time.
     repo.save = AsyncMock(return_value=conversation)
     repo.delete = AsyncMock(return_value=True)
     repo.update_title = AsyncMock(return_value=conversation)
@@ -103,8 +102,12 @@ def mock_conv_repo(conversation: MagicMock) -> MagicMock:
 def mock_doc_repo() -> MagicMock:
     repo = MagicMock()
     repo.get = AsyncMock(return_value=None)
+    repo.list = AsyncMock(return_value=[])
     repo.list_for_conversation = AsyncMock(return_value=[])
     repo.save = AsyncMock(return_value=_doc())
+    repo.delete = AsyncMock(return_value=True)
+    repo.find_duplicate = AsyncMock(return_value=None)
+    repo.attach_to_conversation = AsyncMock(return_value=None)
     return repo
 
 
@@ -152,6 +155,7 @@ async def client(
         doc_router.get_conversation_repo: lambda: mock_conv_repo,
         msg_router.get_document_repo: lambda: mock_doc_repo,
         doc_router.get_document_repo: lambda: mock_doc_repo,
+        storage_router.get_document_repo: lambda: mock_doc_repo,
         msg_router.get_message_repo: lambda: mock_msg_repo,
         msg_router.get_section_repo: lambda: mock_section_repo,
         get_session: _fake_session,
