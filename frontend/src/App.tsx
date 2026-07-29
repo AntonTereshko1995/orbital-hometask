@@ -27,6 +27,7 @@ export default function App() {
 		selectedId,
 		loading: conversationsLoading,
 		create,
+		createQuiet,
 		select,
 		remove,
 		refresh: refreshConversations,
@@ -103,20 +104,17 @@ export default function App() {
 		[uploadToLibrary],
 	);
 
-	const handleViewDocument = useCallback((id: string) => {
-		window.open(api.getDocumentUrl(id), "_blank");
-	}, []);
 
 	const handleCreateChatFromLibrary = useCallback(
 		async (documentId: string) => {
-			const conv = await create();
+			const conv = await createQuiet();
 			if (!conv) return;
 			await api.attachFromLibrary(conv.id, documentId);
-			refreshDocument();
+			select(conv.id);
 			refreshConversations();
 			setLibraryOpen(false);
 		},
-		[create, refreshDocument, refreshConversations],
+		[createQuiet, select, refreshConversations],
 	);
 
 	// Drag handler for the split-pane divider between document and chat.
@@ -216,7 +214,6 @@ export default function App() {
 					onClose={() => setLibraryOpen(false)}
 					onDelete={handleDeleteFromLibrary}
 					onUpload={handleLibraryUpload}
-					onView={handleViewDocument}
 					onCreateChat={handleCreateChatFromLibrary}
 				/>
 			</div>

@@ -41,6 +41,20 @@ export function useConversations() {
 		}
 	}, []);
 
+	const createQuiet = useCallback(async () => {
+		try {
+			setError(null);
+			const conversation = await api.createConversation();
+			setConversations((prev) => [conversation, ...prev]);
+			return conversation;
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to create conversation",
+			);
+			return null;
+		}
+	}, []);
+
 	const select = useCallback((id: string | null) => {
 		setSelectedId(id);
 	}, []);
@@ -72,6 +86,7 @@ export function useConversations() {
 		loading,
 		error,
 		create,
+		createQuiet,
 		select,
 		remove,
 		refresh,
