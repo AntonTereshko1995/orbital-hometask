@@ -1,95 +1,95 @@
-import { ChevronLeft, ChevronRight, FileText, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
+import { Viewer, Worker } from "@react-pdf-viewer/core";
+import "@react-pdf-viewer/core/lib/styles/index.css";
+import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
+import "@react-pdf-viewer/default-layout/lib/styles/index.css";
+import { SpecialZoomLevel } from "@react-pdf-viewer/core";
+import { FileText } from "lucide-react";
+import { useEffect, useState } from "react";
 import { getDocumentUrl } from "../lib/api";
 import type { UploadedDocument } from "../types";
-import { Button } from "./ui/button";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-	"pdfjs-dist/build/pdf.worker.min.mjs",
+// pdfjs-dist v3.x uses .js extension (not .mjs like v4.x)
+const WORKER_URL = new URL(
+	"pdfjs-dist/build/pdf.worker.min.js",
 	import.meta.url,
 ).toString();
-
-const MIN_WIDTH = 280;
-const MAX_WIDTH = 700;
-const DEFAULT_WIDTH = 400;
 
 interface DocumentViewerProps {
 	documents: UploadedDocument[];
 }
 
+// PDFView is keyed by document ID so React fully remounts it when switching
+// documents, ensuring a fresh plugin instance and clean viewer state.
+function PDFView({ pdfUrl }: { pdfUrl: string }) {
+	const defaultLayoutPluginInstance = defaultLayoutPlugin();
+	return (
+		<Viewer
+			fileUrl={pdfUrl}
+			plugins={[defaultLayoutPluginInstance]}
+			defaultScale={SpecialZoomLevel.PageWidth}
+		/>
+	);
+}
+
+interface DocumentTabBarProps {
+	documents: UploadedDocument[];
+	selectedId: string | null;
+	onSelect: (id: string) => void;
+}
+
+function DocumentTabBar({
+	documents,
+	selectedId,
+	onSelect,
+}: DocumentTabBarProps) {
+	return (
+		<div className="flex gap-1 overflow-x-auto border-b border-neutral-100 px-2 pt-2 flex-shrink-0 bg-white">
+			{documents.map((doc) => {
+				const isActive = doc.id === selectedId;
+				const displayName =
+					doc.filename.length > 28
+						? `${doc.filename.slice(0, 28)}…`
+						: doc.filename;
+				return (
+					<button
+						key={doc.id}
+						type="button"
+						className={`whitespace-nowrap rounded-t-md px-3 py-1.5 text-xs flex-shrink-0 transition-colors ${
+							isActive
+								? "border border-b-white border-neutral-200 bg-white font-medium text-neutral-800"
+								: "text-neutral-400 hover:text-neutral-600"
+						}`}
+						onClick={() => onSelect(doc.id)}
+						title={doc.filename}
+					>
+						{displayName}
+					</button>
+				);
+			})}
+		</div>
+	);
+}
+
 export function DocumentViewer({ documents }: DocumentViewerProps) {
 	const [selectedId, setSelectedId] = useState<string | null>(null);
-	const [numPages, setNumPages] = useState<number>(0);
-	const [currentPage, setCurrentPage] = useState(1);
-	const [pdfLoading, setPdfLoading] = useState(true);
-	const [pdfError, setPdfError] = useState<string | null>(null);
-	const [width, setWidth] = useState(DEFAULT_WIDTH);
-	const [dragging, setDragging] = useState(false);
-	const containerRef = useRef<HTMLDivElement>(null);
 
-	// Auto-select first document when list changes, or clear when list is empty
+	// Auto-select first document when list changes; clear when list is empty
 	useEffect(() => {
 		if (documents.length === 0) {
 			setSelectedId(null);
 			return;
 		}
-		// If currently selected doc is no longer in the list, select the first one
 		if (!documents.find((d) => d.id === selectedId)) {
 			setSelectedId(documents[0]?.id ?? null);
 		}
 	}, [documents, selectedId]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: selectedId triggers page reset when switching documents
-	useEffect(() => {
-		setCurrentPage(1);
-		setNumPages(0);
-		setPdfLoading(true);
-		setPdfError(null);
-	}, [selectedId]);
-
 	const selectedDoc =
 		documents.find((d) => d.id === selectedId) ?? documents[0] ?? null;
 
-	const handleMouseDown = useCallback(
-		(e: React.MouseEvent) => {
-			e.preventDefault();
-			setDragging(true);
-
-			const startX = e.clientX;
-			const startWidth = width;
-
-			const handleMouseMove = (moveEvent: MouseEvent) => {
-				const delta = startX - moveEvent.clientX;
-				const newWidth = Math.min(
-					MAX_WIDTH,
-					Math.max(MIN_WIDTH, startWidth + delta),
-				);
-				setWidth(newWidth);
-			};
-
-			const handleMouseUp = () => {
-				setDragging(false);
-				window.removeEventListener("mousemove", handleMouseMove);
-				window.removeEventListener("mouseup", handleMouseUp);
-			};
-
-			window.addEventListener("mousemove", handleMouseMove);
-			window.addEventListener("mouseup", handleMouseUp);
-		},
-		[width],
-	);
-
-	const pdfPageWidth = width - 48;
-
 	if (documents.length === 0) {
 		return (
-			<div
-				style={{ width }}
-				className="flex h-full flex-shrink-0 flex-col items-center justify-center border-l border-neutral-200 bg-neutral-50"
-			>
+			<div className="flex h-full flex-col items-center justify-center bg-neutral-50">
 				<FileText className="mb-3 h-10 w-10 text-neutral-300" />
 				<p className="text-sm text-neutral-400">No documents uploaded</p>
 			</div>
@@ -99,50 +99,19 @@ export function DocumentViewer({ documents }: DocumentViewerProps) {
 	const pdfUrl = selectedDoc ? getDocumentUrl(selectedDoc.id) : null;
 
 	return (
-		<div
-			ref={containerRef}
-			style={{ width }}
-			className="relative flex h-full flex-shrink-0 flex-col border-l border-neutral-200 bg-white"
-		>
-			{/* Resize handle */}
-			<div
-				className={`absolute top-0 left-0 z-10 h-full w-1.5 cursor-col-resize transition-colors hover:bg-neutral-300 ${
-					dragging ? "bg-neutral-400" : ""
-				}`}
-				onMouseDown={handleMouseDown}
-			/>
-
-			{/* Document tabs (only shown when multiple documents) */}
+		<div className="flex h-full flex-col bg-white">
+			{/* Tab bar — only shown when there are 2+ documents */}
 			{documents.length > 1 && (
-				<div className="flex gap-1 overflow-x-auto border-b border-neutral-100 px-2 pt-2 flex-shrink-0">
-					{documents.map((doc) => {
-						const isActive = doc.id === selectedDoc?.id;
-						const displayName =
-							doc.filename.length > 22
-								? `${doc.filename.slice(0, 22)}…`
-								: doc.filename;
-						return (
-							<button
-								key={doc.id}
-								type="button"
-								className={`whitespace-nowrap rounded-t-md px-3 py-1.5 text-xs flex-shrink-0 transition-colors ${
-									isActive
-										? "border border-b-white border-neutral-200 bg-white font-medium text-neutral-800"
-										: "text-neutral-400 hover:text-neutral-600"
-								}`}
-								onClick={() => setSelectedId(doc.id)}
-								title={doc.filename}
-							>
-								{displayName}
-							</button>
-						);
-					})}
-				</div>
+				<DocumentTabBar
+					documents={documents}
+					selectedId={selectedDoc?.id ?? null}
+					onSelect={setSelectedId}
+				/>
 			)}
 
-			{/* Header */}
-			{selectedDoc && (
-				<div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
+			{/* Single-document header */}
+			{selectedDoc && documents.length === 1 && (
+				<div className="flex items-center border-b border-neutral-100 px-4 py-2.5 flex-shrink-0">
 					<div className="min-w-0">
 						<p className="truncate text-sm font-medium text-neutral-800">
 							{selectedDoc.filename}
@@ -155,72 +124,12 @@ export function DocumentViewer({ documents }: DocumentViewerProps) {
 				</div>
 			)}
 
-			{/* PDF content */}
-			<div className="flex-1 overflow-y-auto p-4">
-				{pdfError && (
-					<div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-						{pdfError}
-					</div>
-				)}
-
-				{pdfUrl && (
-					<Document
-						key={pdfUrl}
-						file={pdfUrl}
-						onLoadSuccess={({ numPages: pages }) => {
-							setNumPages(pages);
-							setPdfLoading(false);
-							setPdfError(null);
-						}}
-						onLoadError={(error) => {
-							setPdfError(`Failed to load PDF: ${error.message}`);
-							setPdfLoading(false);
-						}}
-						loading={
-							<div className="flex items-center justify-center py-12">
-								<Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
-							</div>
-						}
-					>
-						{!pdfLoading && !pdfError && (
-							<Page
-								pageNumber={currentPage}
-								width={pdfPageWidth}
-								loading={
-									<div className="flex items-center justify-center py-12">
-										<Loader2 className="h-5 w-5 animate-spin text-neutral-300" />
-									</div>
-								}
-							/>
-						)}
-					</Document>
-				)}
-			</div>
-
-			{/* Page navigation */}
-			{numPages > 0 && (
-				<div className="flex items-center justify-center gap-3 border-t border-neutral-100 px-4 py-2.5">
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7"
-						disabled={currentPage <= 1}
-						onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-					>
-						<ChevronLeft className="h-4 w-4" />
-					</Button>
-					<span className="text-xs text-neutral-500">
-						Page {currentPage} of {numPages}
-					</span>
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7"
-						disabled={currentPage >= numPages}
-						onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
-					>
-						<ChevronRight className="h-4 w-4" />
-					</Button>
+			{/* PDF Viewer — Worker stays mounted; only PDFView remounts on tab switch */}
+			{pdfUrl && selectedDoc && (
+				<div className="flex-1 overflow-hidden">
+					<Worker workerUrl={WORKER_URL}>
+						<PDFView key={selectedDoc.id} pdfUrl={pdfUrl} />
+					</Worker>
 				</div>
 			)}
 		</div>

@@ -124,8 +124,7 @@ export function LibraryPanel({
 								? "bg-red-50 text-red-600"
 								: uploadSummary.failed > 0
 									? "bg-amber-50 text-amber-700"
-									: uploadSummary.duplicates > 0 &&
-										  uploadSummary.added === 0
+									: uploadSummary.duplicates > 0 && uploadSummary.added === 0
 										? "bg-amber-50 text-amber-700"
 										: "bg-green-50 text-green-700"
 						}`}
@@ -189,9 +188,7 @@ export function LibraryPanel({
 										type="button"
 										onClick={(e) => {
 											e.stopPropagation();
-											setOpenMenuId(
-												openMenuId === doc.id ? null : doc.id,
-											);
+											setOpenMenuId(openMenuId === doc.id ? null : doc.id);
 										}}
 										className="rounded p-1 text-neutral-300 opacity-0 transition-all hover:bg-neutral-100 hover:text-neutral-600 group-hover:opacity-100"
 									>

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ChatSidebar } from "./components/ChatSidebar";
 import { ChatWindow } from "./components/ChatWindow";
 import { DocumentViewer } from "./components/DocumentViewer";
@@ -10,8 +10,17 @@ import { useLibrary } from "./hooks/use-library";
 import { useMessages } from "./hooks/use-messages";
 import * as api from "./lib/api";
 
+// Document pane width as percentage of the main content area (sidebar excluded).
+// Clamped between 40% and 80% via the drag handle.
+const DOC_WIDTH_DEFAULT = 62;
+const DOC_WIDTH_MIN = 40;
+const DOC_WIDTH_MAX = 80;
+
 export default function App() {
 	const [libraryOpen, setLibraryOpen] = useState(false);
+	const [docWidthPercent, setDocWidthPercent] = useState(DOC_WIDTH_DEFAULT);
+	const [isDragging, setIsDragging] = useState(false);
+	const mainRef = useRef<HTMLDivElement>(null);
 
 	const {
 		conversations,
@@ -110,9 +119,42 @@ export default function App() {
 		[create, refreshDocument, refreshConversations],
 	);
 
+	// Drag handler for the split-pane divider between document and chat.
+	// Captures the container bounds at drag-start so calculations stay accurate
+	// even if the container shifts during the drag.
+	const handleSplitDrag = useCallback((e: React.MouseEvent) => {
+		e.preventDefault();
+		const container = mainRef.current;
+		if (!container) return;
+
+		setIsDragging(true);
+		const rect = container.getBoundingClientRect();
+
+		const handleMouseMove = (moveEvent: MouseEvent) => {
+			const relX = moveEvent.clientX - rect.left;
+			const percent = (relX / rect.width) * 100;
+			setDocWidthPercent(
+				Math.min(DOC_WIDTH_MAX, Math.max(DOC_WIDTH_MIN, percent)),
+			);
+		};
+
+		const handleMouseUp = () => {
+			setIsDragging(false);
+			window.removeEventListener("mousemove", handleMouseMove);
+			window.removeEventListener("mouseup", handleMouseUp);
+		};
+
+		window.addEventListener("mousemove", handleMouseMove);
+		window.addEventListener("mouseup", handleMouseUp);
+	}, []);
+
 	return (
 		<TooltipProvider delayDuration={200}>
-			<div className="flex h-screen bg-neutral-50">
+			<div
+				className="flex h-screen bg-neutral-50"
+				// Prevent text selection while dragging the divider
+				style={isDragging ? { userSelect: "none", cursor: "col-resize" } : {}}
+			>
 				<ChatSidebar
 					conversations={conversations}
 					selectedId={selectedId}
@@ -124,22 +166,44 @@ export default function App() {
 					onToggleLibrary={() => setLibraryOpen((v) => !v)}
 				/>
 
-				<ChatWindow
-					messages={messages}
-					loading={messagesLoading}
-					error={messagesError}
-					streaming={streaming}
-					streamingContent={streamingContent}
-					hasDocument={documents.length > 0}
-					uploading={uploading}
-					conversationId={selectedId}
-					libraryDocuments={libraryDocuments}
-					onSend={handleSend}
-					onUpload={handleUpload}
-					onAttachFromLibrary={handleAttachFromLibrary}
-				/>
+				{/* Main content area: document pane + divider + chat pane */}
+				<div ref={mainRef} className="relative flex flex-1 overflow-hidden">
+					{/* Document pane — primary, wider */}
+					<div
+						style={{ width: `${docWidthPercent}%` }}
+						className="flex flex-col overflow-hidden"
+					>
+						<DocumentViewer documents={documents} />
+					</div>
 
-				<DocumentViewer documents={documents} />
+					{/* Drag handle — vertical divider between document and chat */}
+					<div
+						className="absolute top-0 z-10 h-full w-1 -translate-x-1/2 cursor-col-resize transition-colors hover:bg-blue-400"
+						style={{ left: `${docWidthPercent}%` }}
+						onMouseDown={handleSplitDrag}
+					/>
+
+					{/* Chat pane — secondary, narrower */}
+					<div
+						style={{ width: `${100 - docWidthPercent}%` }}
+						className="flex flex-col overflow-hidden border-l border-neutral-200"
+					>
+						<ChatWindow
+							messages={messages}
+							loading={messagesLoading}
+							error={messagesError}
+							streaming={streaming}
+							streamingContent={streamingContent}
+							hasDocument={documents.length > 0}
+							uploading={uploading}
+							conversationId={selectedId}
+							libraryDocuments={libraryDocuments}
+							onSend={handleSend}
+							onUpload={handleUpload}
+							onAttachFromLibrary={handleAttachFromLibrary}
+						/>
+					</div>
+				</div>
 
 				<LibraryPanel
 					open={libraryOpen}
