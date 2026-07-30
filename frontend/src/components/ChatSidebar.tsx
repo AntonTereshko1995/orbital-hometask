@@ -299,7 +299,10 @@ export function ChatSidebar({
 							conversationId={conv.id}
 							isShared={conv.is_shared}
 							shareToken={conv.share_token}
-							onClose={() => setShareDialogConvId(null)}
+							onClose={() => {
+								onShareChange();
+								setShareDialogConvId(null);
+							}}
 							onShareChange={() => {
 								onShareChange();
 								setShareDialogConvId(null);

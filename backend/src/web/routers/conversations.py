@@ -13,6 +13,7 @@ from web.schemas.conversation import (
     ConversationListItem,
     ConversationUpdate,
     DocumentInfo,
+    ShareInfo,
 )
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
@@ -56,6 +57,8 @@ async def list_conversations_endpoint(
             updated_at=c.updated_at,
             has_document=len(c.documents) > 0,
             is_pinned=c.is_pinned,
+            is_shared=c.is_shared,
+            share_token=c.share_token,
         )
         for c in conversations
     ]
@@ -74,6 +77,8 @@ async def create_conversation_endpoint(
         updated_at=conversation.updated_at,
         has_document=False,
         is_pinned=conversation.is_pinned,
+        is_shared=conversation.is_shared,
+        share_token=conversation.share_token,
         documents=[],
     )
 
@@ -96,6 +101,8 @@ async def get_conversation_endpoint(
         updated_at=conversation.updated_at,
         has_document=len(docs) > 0,
         is_pinned=conversation.is_pinned,
+        is_shared=conversation.is_shared,
+        share_token=conversation.share_token,
         documents=docs,
     )
 
@@ -126,6 +133,8 @@ async def update_conversation_endpoint(
         updated_at=conversation.updated_at,
         has_document=len(docs) > 0,
         is_pinned=conversation.is_pinned,
+        is_shared=conversation.is_shared,
+        share_token=conversation.share_token,
         documents=docs,
     )
 
@@ -138,4 +147,27 @@ async def delete_conversation_endpoint(
     """Delete a conversation and all associated data."""
     deleted = await repo.delete(conversation_id)
     if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+
+@router.post("/{conversation_id}/share", response_model=ShareInfo)
+async def share_conversation_endpoint(
+    conversation_id: str,
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
+) -> ShareInfo:
+    """Enable sharing for a conversation, generating a token if needed."""
+    conversation = await repo.enable_share(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return ShareInfo(is_shared=conversation.is_shared, share_token=conversation.share_token)
+
+
+@router.delete("/{conversation_id}/share", status_code=204)
+async def unshare_conversation_endpoint(
+    conversation_id: str,
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
+) -> None:
+    """Disable sharing for a conversation."""
+    disabled = await repo.disable_share(conversation_id)
+    if not disabled:
         raise HTTPException(status_code=404, detail="Conversation not found")

@@ -18,6 +18,8 @@ class Conversation(Base):
 
     title: Mapped[str] = mapped_column(default="New Conversation")
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    share_token: Mapped[str | None] = mapped_column(String, nullable=True, unique=True, index=True, default=None)
 
     messages: Mapped[list[Message]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"

@@ -2,6 +2,7 @@ import type {
 	Conversation,
 	ConversationDetail,
 	Message,
+	SharedConversation,
 	UploadedDocument,
 } from "../types";
 
@@ -137,4 +138,29 @@ export async function deleteDocument(id: string): Promise<void> {
 
 export function getDocumentUrl(documentId: string): string {
 	return `${BASE}/documents/${documentId}/content`;
+}
+
+export async function shareConversation(
+	id: string,
+): Promise<{ is_shared: boolean; share_token: string | null }> {
+	const res = await fetch(`${BASE}/conversations/${id}/share`, {
+		method: "POST",
+	});
+	return handleResponse<{ is_shared: boolean; share_token: string | null }>(
+		res,
+	);
+}
+
+export async function unshareConversation(id: string): Promise<void> {
+	const res = await fetch(`${BASE}/conversations/${id}/share`, {
+		method: "DELETE",
+	});
+	await handleEmptyResponse(res);
+}
+
+export async function fetchSharedConversation(
+	token: string,
+): Promise<SharedConversation> {
+	const res = await fetch(`${BASE}/shared/${token}`);
+	return handleResponse<SharedConversation>(res);
 }

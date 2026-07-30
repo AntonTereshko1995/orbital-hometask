@@ -17,6 +17,7 @@ from web.app import app
 from web.routers import conversations as conv_router
 from web.routers import documents as doc_router
 from web.routers import messages as msg_router
+from web.routers import sharing as sharing_router
 from web.routers import storage as storage_router
 
 _TS = datetime(2024, 1, 1, 12, 0, 0)
@@ -42,6 +43,8 @@ def _conv(
     m.created_at = _TS
     m.updated_at = _TS
     m.is_pinned = is_pinned
+    m.is_shared = False
+    m.share_token = None
     return m
 
 
@@ -98,6 +101,9 @@ def mock_conv_repo(conversation: MagicMock) -> MagicMock:
     repo.delete = AsyncMock(return_value=True)
     repo.update_title = AsyncMock(return_value=conversation)
     repo.update_pin = AsyncMock(return_value=conversation)
+    repo.enable_share = AsyncMock(return_value=conversation)
+    repo.disable_share = AsyncMock(return_value=True)
+    repo.get_by_share_token = AsyncMock(return_value=conversation)
     return repo
 
 
@@ -156,10 +162,12 @@ async def client(
         conv_router.get_conversation_repo: lambda: mock_conv_repo,
         msg_router.get_conversation_repo: lambda: mock_conv_repo,
         doc_router.get_conversation_repo: lambda: mock_conv_repo,
+        sharing_router.get_conversation_repo: lambda: mock_conv_repo,
         msg_router.get_document_repo: lambda: mock_doc_repo,
         doc_router.get_document_repo: lambda: mock_doc_repo,
         storage_router.get_document_repo: lambda: mock_doc_repo,
         msg_router.get_message_repo: lambda: mock_msg_repo,
+        sharing_router.get_message_repo: lambda: mock_msg_repo,
         msg_router.get_section_repo: lambda: mock_section_repo,
         get_session: _fake_session,
     }

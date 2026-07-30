@@ -5,6 +5,8 @@ export interface Conversation {
 	updated_at: string;
 	has_document: boolean;
 	is_pinned: boolean;
+	is_shared: boolean;
+	share_token: string | null;
 }
 
 export interface Message {
@@ -27,4 +29,20 @@ export interface UploadedDocument {
 
 export interface ConversationDetail extends Conversation {
 	documents: UploadedDocument[];
+}
+
+export interface SharedMessage {
+	id: string;
+	conversation_id: string;
+	role: "user" | "assistant";
+	content: string;
+	sources_cited: number;
+	created_at: string;
+}
+
+export interface SharedConversation {
+	title: string;
+	created_at: string;
+	documents: UploadedDocument[];
+	messages: SharedMessage[];
 }

@@ -200,3 +200,65 @@ async def test_delete_conversation_not_found(
     mock_conv_repo.delete = AsyncMock(return_value=False)
     response = await client.delete("/api/conversations/nonexistent")
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /api/conversations/{id}/share
+# ---------------------------------------------------------------------------
+
+
+async def test_share_conversation_returns_200(
+    client: AsyncClient, mock_conv_repo: MagicMock, conversation: MagicMock
+) -> None:
+    conversation.is_shared = True
+    conversation.share_token = "abc123sharetoken"
+    mock_conv_repo.enable_share = AsyncMock(return_value=conversation)
+
+    response = await client.post("/api/conversations/conv0000001test/share")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_shared"] is True
+    assert data["share_token"] == "abc123sharetoken"
+
+
+async def test_share_conversation_not_found(
+    client: AsyncClient, mock_conv_repo: MagicMock
+) -> None:
+    mock_conv_repo.enable_share = AsyncMock(return_value=None)
+    response = await client.post("/api/conversations/nonexistent/share")
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/conversations/{id}/share
+# ---------------------------------------------------------------------------
+
+
+async def test_unshare_conversation_returns_204(client: AsyncClient) -> None:
+    response = await client.delete("/api/conversations/conv0000001test/share")
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+async def test_unshare_conversation_not_found(
+    client: AsyncClient, mock_conv_repo: MagicMock
+) -> None:
+    mock_conv_repo.disable_share = AsyncMock(return_value=False)
+    response = await client.delete("/api/conversations/nonexistent/share")
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Share fields in list response
+# ---------------------------------------------------------------------------
+
+
+async def test_list_conversations_includes_share_fields(client: AsyncClient) -> None:
+    response = await client.get("/api/conversations")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert "is_shared" in data[0]
+    assert "share_token" in data[0]
+    assert data[0]["is_shared"] is False
+    assert data[0]["share_token"] is None

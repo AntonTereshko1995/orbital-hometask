@@ -44,3 +44,27 @@ class ConversationRepository(BaseRepository[Conversation]):
         conversation.is_pinned = is_pinned
         return await self.save(conversation)
 
+    async def get_by_share_token(self, token: str) -> Conversation | None:
+        result = await self._session.execute(
+            select(Conversation)
+            .options(selectinload(Conversation.documents))
+            .where(Conversation.share_token == token, Conversation.is_shared == True)  # noqa: E712
+        )
+        return result.scalar_one_or_none()
+
+    async def enable_share(self, id: str) -> Conversation | None:
+        conversation = await self.get(id)
+        if conversation is None:
+            return None
+        if conversation.share_token is None:
+            conversation.share_token = uuid.uuid4().hex
+        conversation.is_shared = True
+        return await self.save(conversation)
+
+    async def disable_share(self, id: str) -> bool:
+        conversation = await self.get(id)
+        if conversation is None:
+            return False
+        conversation.is_shared = False
+        await self.save(conversation)
+        return True

@@ -22,6 +22,8 @@ class ConversationListItem(BaseModel):
     updated_at: datetime
     has_document: bool
     is_pinned: bool
+    is_shared: bool
+    share_token: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -33,6 +35,8 @@ class ConversationDetail(BaseModel):
     updated_at: datetime
     has_document: bool
     is_pinned: bool
+    is_shared: bool
+    share_token: str | None = None
     documents: list[DocumentInfo] = []
 
     model_config = {"from_attributes": True}
@@ -47,3 +51,10 @@ class ConversationUpdate(BaseModel):
         if self.title is None and self.is_pinned is None:
             raise ValueError("at least one of title or is_pinned must be provided")
         return self
+
+
+class ShareInfo(BaseModel):
+    is_shared: bool
+    share_token: str | None = None
+
+    model_config = {"from_attributes": True}
