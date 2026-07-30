@@ -82,7 +82,9 @@ alembic/        Database migrations (PostgreSQL 16 via asyncpg)
 
 **`web/`**
 - `app.py` — FastAPI app; runs Alembic `upgrade head` on startup via `asyncio.to_thread`.
-- `routers/conversations.py`, `routers/documents.py`, `routers/messages.py` — API endpoints.
+- `routers/conversations.py`, `routers/documents.py`, `routers/messages.py` — Core API endpoints.
+- `routers/sharing.py` — Read-only shared conversation views via `/api/shared/{token}`.
+- `routers/storage.py` — Document library endpoint (`/api/storage`); uploads PDFs without attaching to a conversation.
 - `schemas/` — Pydantic request/response models (separate from ORM models).
 
 ### Three-strategy retrieval pipeline (`ai/pipeline.py`)
@@ -105,6 +107,9 @@ Three-pane layout in `App.tsx`: `ChatSidebar` | `ChatWindow` | `DocumentViewer`.
 - **`lib/sse.ts`** — SSE event parsing.
 - **`hooks/`** — `use-conversations`, `use-messages`, `use-document` manage state and API interactions.
 - **`types.ts`** — Shared TypeScript interfaces (`Conversation`, `Message`, `Document`, `ConversationDetail`).
+- **`components/LibraryPanel.tsx`** — Document library sidebar (browse and reuse documents from the library).
+- **`components/ShareDialog.tsx`** — UI for generating/revoking shareable read-only links.
+- **`components/SharedConversationView.tsx`** — Standalone read-only view rendered for shared conversation links.
 
 ### SSE streaming protocol
 
@@ -115,9 +120,10 @@ The `POST /api/conversations/{id}/messages` endpoint returns `text/event-stream`
 
 The SSE generator in `messages.py` opens its own DB sessions for post-stream writes (after the request-scoped session closes).
 
-### Data model constraints
+### Data model notes
 
-- Each conversation holds exactly one document (enforced at upload time).
+- `Conversation` ↔ `Document` is **M:N** via the `conversation_documents` association table. A document can be reused across conversations; `Document.content_hash` (SHA-256) enables deduplication so re-uploading the same PDF reuses the existing row.
+- `Conversation` has `is_pinned` (bool), `is_shared` (bool), and `share_token` (nullable unique string) columns.
 - Uploaded files are stored on disk under `uploads/` (volume-mounted in Docker); embedding JSON files live under `uploads/embeddings/`.
 - `Message.sources_cited` counts regex matches of section/clause/page references.
 - Alembic migrations auto-run on startup; never apply them manually in production.

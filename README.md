@@ -44,15 +44,15 @@ Open [http://localhost:5173](http://localhost:5173). Migrations run automaticall
 
 | Command                                       | What it does                         |
 | --------------------------------------------- | ------------------------------------ |
-| `just dev`                                  | Start the full stack with hot reload |
-| `just stop`                                 | Stop all services                    |
-| `just reset`                                | Stop + wipe the database volume      |
-| `just check`                                | Ruff + Pyright + Biome + tsc         |
-| `just fmt`                                  | Auto-format backend and frontend     |
-| `just db-migrate "msg"`                     | Generate a new Alembic migration     |
-| `just db-upgrade`                           | Apply pending migrations             |
-| `just db-shell`                             | Open a psql shell                    |
-| `docker compose exec backend uv run pytest` | Run the backend test suite           |
+| `just dev`                                    | Start the full stack with hot reload |
+| `just stop`                                   | Stop all services                    |
+| `just reset`                                  | Stop + wipe the database volume      |
+| `just check`                                  | Ruff + Pyright + Biome + tsc         |
+| `just fmt`                                    | Auto-format backend and frontend     |
+| `just db-migrate "msg"`                       | Generate a new Alembic migration     |
+| `just db-upgrade`                             | Apply pending migrations             |
+| `just db-shell`                               | Open a psql shell                    |
+| `docker compose exec backend uv run pytest`   | Run the backend test suite           |
 
 ### Sample documents
 
@@ -91,6 +91,28 @@ Large documents generate text embeddings at upload time (via LiteLLM, defaulting
 
 The routing logic lives in [`backend/src/ai/pipeline.py`](backend/src/ai/pipeline.py). Thresholds are configurable via env vars (`AGENTIC_SEARCH_THRESHOLD`, `RAG_TOKEN_THRESHOLD`, `RAG_TOP_K`).
 
+### Part 3 — Product improvements driven by feedback
+
+After completing the retrieval pipeline I went back to the feedback and picked off the next clearest user problems.
+
+#### Document library
+
+One beta user said: *"I had to re-upload the same lease agreement in three different chats because I was asking different types of questions about it each time. Feels like the tool should just remember my documents."*
+
+The library panel lets users upload a PDF once and attach it to any number of conversations without re-uploading. The backend deduplicates by content hash (SHA-256) so the same file is never stored twice even if uploaded again. The conversation ↔ document relationship is now M:N.
+
+#### Improved PDF viewer
+
+Switched from the custom viewer to `react-pdf-viewer` with a resizable split-pane layout. The document panel can be dragged to any width, which matters when you want to read a long clause and the AI answer side by side.
+
+#### Conversation pinning
+
+Pinned conversations float to the top of the sidebar list. Useful for active matters that a lawyer returns to daily across a longer due diligence process.
+
+#### Read-only sharing
+
+Any conversation can be shared via a unique link. The shared view is fully read-only — no API key required to load it, no ability to send messages. Useful for passing a Q&A thread to a colleague or client without giving them access to the account.
+
 ---
 
 ## Other changes from the baseline
@@ -115,7 +137,7 @@ Service functions were replaced with typed repository classes (`ConversationRepo
 
 ### Backend test suite
 
-Added ~1 300 lines of unit and integration tests covering API endpoints, document processing, the section indexer, the sub-agent tool loop, the embedding store, and all three pipeline routing strategies.
+Added ~2 000 lines of unit and integration tests across 13 test files covering API endpoints, document processing, the section indexer, the sub-agent tool loop, the embedding store, all three pipeline routing strategies, document library deduplication, and conversation sharing.
 
 ---
 
@@ -128,20 +150,21 @@ backend/src/
   db/             SQLAlchemy models, repositories, session factory
   services/       Document processing, section indexing, embedding store
   web/            FastAPI app, routers, Pydantic schemas
+    routers/      conversations, documents, messages, sharing, storage
 alembic/          PostgreSQL migrations
 ```
 
 Environment variables (full list in `.env.example`):
 
-| Variable                     | Purpose                                                                     |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| `LLM_API_KEY`              | API key for the main LLM (Anthropic, OpenAI, …)                            |
-| `LLM_MODEL`                | LiteLLM model string, e.g.`anthropic/claude-haiku-4-5-20251001`           |
-| `EMBEDDING_MODEL`          | Embedding model for Level 3 RAG (default:`openai/text-embedding-3-small`) |
-| `EMBEDDING_API_KEY`        | API key for the embedding model                                             |
-| `AGENTIC_SEARCH_THRESHOLD` | Token count above which Level 2 activates (default: 1 000)                  |
-| `RAG_TOKEN_THRESHOLD`      | Token count above which Level 3 activates (default: 10 000)                 |
-| `RAG_TOP_K`                | Number of chunks retrieved in Level 3 (default: 10)                         |
+| Variable                     | Purpose                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| `LLM_API_KEY`                | API key for the main LLM (Anthropic, OpenAI, …)                             |
+| `LLM_MODEL`                  | LiteLLM model string, e.g. `anthropic/claude-haiku-4-5-20251001`            |
+| `EMBEDDING_MODEL`            | Embedding model for Level 3 RAG (default: `openai/text-embedding-3-small`)  |
+| `EMBEDDING_API_KEY`          | API key for the embedding model                                              |
+| `AGENTIC_SEARCH_THRESHOLD`   | Token count above which Level 2 activates (default: 1 000)                  |
+| `RAG_TOKEN_THRESHOLD`        | Token count above which Level 3 activates (default: 10 000)                 |
+| `RAG_TOP_K`                  | Number of chunks retrieved in Level 3 (default: 10)                         |
 
 ---
 
@@ -167,4 +190,4 @@ I'd add a confidence indicator to the UI — a clear ask from the feedback — s
 
 I'd also expose the model's reasoning process in the UI — an expandable "thinking" panel that shows the sub-agent's tool calls as they happen (which sections it searched, what it read, why it moved on). This turns the black-box answer into an auditable trace, which is exactly what a lawyer needs before staking a client opinion on it. Extended thinking is supported by Claude's latest models and can be streamed through the existing SSE channel.
 
-Finally, the current UI/UX is functional but unpolished. The three areas I'd prioritise: a Ctrl+F / jump-to-section search within the document viewer (explicitly requested in feedback), inline highlighting that scrolls the viewer to the cited section when the user clicks a reference in the chat, and an export-to-Word flow for the conversation summary. These together close the loop between "AI found the answer" and "lawyer can share it with a client."
+Finally, the current UI/UX still has room to grow. The three areas I'd prioritise: a Ctrl+F / jump-to-section search within the document viewer (explicitly requested in feedback), inline highlighting that scrolls the viewer to the cited section when the user clicks a reference in the chat, and an export-to-Word flow for the conversation summary. These together close the loop between "AI found the answer" and "lawyer can share it with a client."
