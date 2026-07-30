@@ -119,12 +119,68 @@ async def test_update_title_returns_200(
 async def test_update_title_not_found(
     client: AsyncClient, mock_conv_repo: MagicMock
 ) -> None:
-    mock_conv_repo.update_title = AsyncMock(return_value=None)
+    mock_conv_repo.get = AsyncMock(return_value=None)
     response = await client.patch(
         "/api/conversations/nonexistent",
         json={"title": "Anything"},
     )
     assert response.status_code == 404
+
+
+async def test_update_with_no_fields_returns_422(client: AsyncClient) -> None:
+    response = await client.patch(
+        "/api/conversations/conv0000001test",
+        json={},
+    )
+    assert response.status_code == 422
+
+
+async def test_pin_conversation_returns_200(
+    client: AsyncClient, mock_conv_repo: MagicMock, conversation: MagicMock
+) -> None:
+    conversation.is_pinned = True
+    mock_conv_repo.update_pin = AsyncMock(return_value=conversation)
+
+    response = await client.patch(
+        "/api/conversations/conv0000001test",
+        json={"is_pinned": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["is_pinned"] is True
+
+
+async def test_unpin_conversation_returns_200(
+    client: AsyncClient, mock_conv_repo: MagicMock, conversation: MagicMock
+) -> None:
+    conversation.is_pinned = False
+    mock_conv_repo.update_pin = AsyncMock(return_value=conversation)
+
+    response = await client.patch(
+        "/api/conversations/conv0000001test",
+        json={"is_pinned": False},
+    )
+    assert response.status_code == 200
+    assert response.json()["is_pinned"] is False
+
+
+async def test_pin_conversation_not_found(
+    client: AsyncClient, mock_conv_repo: MagicMock
+) -> None:
+    mock_conv_repo.get = AsyncMock(return_value=None)
+    response = await client.patch(
+        "/api/conversations/nonexistent",
+        json={"is_pinned": True},
+    )
+    assert response.status_code == 404
+
+
+async def test_list_conversations_includes_is_pinned(client: AsyncClient) -> None:
+    response = await client.get("/api/conversations")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert "is_pinned" in data[0]
+    assert data[0]["is_pinned"] is False
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ export interface Conversation {
 	created_at: string;
 	updated_at: string;
 	has_document: boolean;
+	is_pinned: boolean;
 }
 
 export interface Message {

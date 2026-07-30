@@ -24,6 +24,19 @@ async def get_conversation_repo(
     return ConversationRepository(session)
 
 
+def _make_doc_infos(conversation: Conversation) -> list[DocumentInfo]:
+    return [
+        DocumentInfo(
+            id=doc.id,
+            filename=doc.filename,
+            file_size=doc.file_size,
+            page_count=doc.page_count,
+            created_at=doc.created_at,
+        )
+        for doc in conversation.documents
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # Endpoints
 # --------------------------------------------------------------------------- #
@@ -33,7 +46,7 @@ async def get_conversation_repo(
 async def list_conversations_endpoint(
     repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
 ) -> list[ConversationListItem]:
-    """List all conversations, ordered by most recently updated."""
+    """List all conversations, ordered by pinned first then most recently updated."""
     conversations = await repo.list()
     return [
         ConversationListItem(
@@ -42,6 +55,7 @@ async def list_conversations_endpoint(
             created_at=c.created_at,
             updated_at=c.updated_at,
             has_document=len(c.documents) > 0,
+            is_pinned=c.is_pinned,
         )
         for c in conversations
     ]
@@ -59,6 +73,7 @@ async def create_conversation_endpoint(
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         has_document=False,
+        is_pinned=conversation.is_pinned,
         documents=[],
     )
 
@@ -73,23 +88,14 @@ async def get_conversation_endpoint(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    docs = [
-        DocumentInfo(
-            id=doc.id,
-            filename=doc.filename,
-            file_size=doc.file_size,
-            page_count=doc.page_count,
-            created_at=doc.created_at,
-        )
-        for doc in conversation.documents
-    ]
-
+    docs = _make_doc_infos(conversation)
     return ConversationDetail(
         id=conversation.id,
         title=conversation.title,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         has_document=len(docs) > 0,
+        is_pinned=conversation.is_pinned,
         documents=docs,
     )
 
@@ -100,28 +106,26 @@ async def update_conversation_endpoint(
     body: ConversationUpdate,
     repo: Annotated[ConversationRepository, Depends(get_conversation_repo)],
 ) -> ConversationDetail:
-    """Update a conversation's title."""
-    conversation = await repo.update_title(conversation_id, body.title)
+    """Update a conversation's title and/or pin state."""
+    conversation = await repo.get(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    docs = [
-        DocumentInfo(
-            id=doc.id,
-            filename=doc.filename,
-            file_size=doc.file_size,
-            page_count=doc.page_count,
-            created_at=doc.created_at,
-        )
-        for doc in conversation.documents
-    ]
+    if body.title is not None:
+        conversation = await repo.update_title(conversation_id, body.title)
+    if body.is_pinned is not None:
+        conversation = await repo.update_pin(conversation_id, body.is_pinned)
 
+    assert conversation is not None
+
+    docs = _make_doc_infos(conversation)
     return ConversationDetail(
         id=conversation.id,
         title=conversation.title,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         has_document=len(docs) > 0,
+        is_pinned=conversation.is_pinned,
         documents=docs,
     )
 

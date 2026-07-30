@@ -70,7 +70,7 @@ export function ChatWindow({
 	// Empty conversation - show upload prompt
 	if (messages.length === 0 && !streaming) {
 		return (
-			<div className="flex flex-1 flex-col bg-white">
+			<div className="flex min-h-0 flex-1 flex-col bg-white">
 				<div className="flex flex-1 items-center justify-center">
 					{hasDocument ? (
 						<div className="text-center">
@@ -102,14 +102,14 @@ export function ChatWindow({
 	}
 
 	return (
-		<div className="flex flex-1 flex-col bg-white">
+		<div className="flex min-h-0 flex-1 flex-col bg-white">
 			{error && (
 				<div className="mx-4 mt-2 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">
 					{error}
 				</div>
 			)}
 
-			<div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
+			<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
 				<div className="w-full space-y-1">
 					{messages.map((message) => (
 						<MessageBubble key={message.id} message={message} />

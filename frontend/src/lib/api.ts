@@ -43,6 +43,18 @@ export async function deleteConversation(id: string): Promise<void> {
 	await handleEmptyResponse(res);
 }
 
+export async function updateConversation(
+	id: string,
+	updates: { title?: string; is_pinned?: boolean },
+): Promise<Conversation> {
+	const res = await fetch(`${BASE}/conversations/${id}`, {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(updates),
+	});
+	return handleResponse<Conversation>(res);
+}
+
 export async function fetchConversation(
 	id: string,
 ): Promise<ConversationDetail> {

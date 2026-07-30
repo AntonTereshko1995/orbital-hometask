@@ -1,4 +1,4 @@
-import { Viewer, Worker, SpecialZoomLevel } from "@react-pdf-viewer/core";
+import { SpecialZoomLevel, Viewer } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -15,16 +15,18 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { getDocumentUrl } from "../lib/api";
 import type { UploadSummary } from "../hooks/use-library";
+import { getDocumentUrl } from "../lib/api";
 import type { UploadedDocument } from "../types";
 import { Button } from "./ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { ScrollArea } from "./ui/scroll-area";
-
-const WORKER_URL = new URL(
-	"pdfjs-dist/build/pdf.worker.min.js",
-	import.meta.url,
-).toString();
 
 function PDFPreview({ pdfUrl }: { pdfUrl: string }) {
 	const plugin = defaultLayoutPlugin();
@@ -43,7 +45,11 @@ interface DocumentPreviewModalProps {
 	onCreateChat: (id: string) => void;
 }
 
-function DocumentPreviewModal({ doc, onClose, onCreateChat }: DocumentPreviewModalProps) {
+function DocumentPreviewModal({
+	doc,
+	onClose,
+	onCreateChat,
+}: DocumentPreviewModalProps) {
 	const pdfUrl = getDocumentUrl(doc.id);
 
 	// Close on Escape
@@ -56,10 +62,12 @@ function DocumentPreviewModal({ doc, onClose, onCreateChat }: DocumentPreviewMod
 	}, [onClose]);
 
 	return createPortal(
+		// biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss is supplemented by Escape key handler above
 		<div
 			className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-6"
 			onClick={onClose}
 		>
+			{/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation only, no meaningful action */}
 			<div
 				className="flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
 				onClick={(e) => e.stopPropagation()}
@@ -91,9 +99,7 @@ function DocumentPreviewModal({ doc, onClose, onCreateChat }: DocumentPreviewMod
 					</div>
 				</div>
 				<div className="flex-1 overflow-hidden">
-					<Worker workerUrl={WORKER_URL}>
-						<PDFPreview pdfUrl={pdfUrl} />
-					</Worker>
+					<PDFPreview pdfUrl={pdfUrl} />
 				</div>
 			</div>
 		</div>,
@@ -129,15 +135,7 @@ export function LibraryPanel({
 	onCreateChat,
 }: LibraryPanelProps) {
 	const fileInputRef = useRef<HTMLInputElement>(null);
-	const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 	const [previewDoc, setPreviewDoc] = useState<UploadedDocument | null>(null);
-
-	useEffect(() => {
-		if (!openMenuId) return;
-		const close = () => setOpenMenuId(null);
-		document.addEventListener("click", close);
-		return () => document.removeEventListener("click", close);
-	}, [openMenuId]);
 
 	if (!open) return null;
 
@@ -280,56 +278,34 @@ export function LibraryPanel({
 											{doc.page_count !== 1 ? "s" : ""}
 										</p>
 									</div>
-									<div className="relative">
-										<button
-											type="button"
-											onClick={(e) => {
-												e.stopPropagation();
-												setOpenMenuId(openMenuId === doc.id ? null : doc.id);
-											}}
-											className="rounded p-1 text-neutral-300 opacity-0 transition-all hover:bg-neutral-100 hover:text-neutral-600 group-hover:opacity-100"
-										>
-											<MoreHorizontal className="h-3.5 w-3.5" />
-										</button>
-										{openMenuId === doc.id && (
-											<div className="absolute right-0 top-full z-50 mt-1 min-w-[148px] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
-												<button
-													type="button"
-													onClick={() => {
-														setPreviewDoc(doc);
-														setOpenMenuId(null);
-													}}
-													className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
-												>
-													<Eye className="h-3.5 w-3.5" />
-													View
-												</button>
-												<button
-													type="button"
-													onClick={() => {
-														onCreateChat(doc.id);
-														setOpenMenuId(null);
-													}}
-													className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
-												>
-													<MessageSquarePlus className="h-3.5 w-3.5" />
-													Create chat
-												</button>
-												<div className="my-1 border-t border-neutral-100" />
-												<button
-													type="button"
-													onClick={() => {
-														onDelete(doc.id);
-														setOpenMenuId(null);
-													}}
-													className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
-												>
-													<Trash2 className="h-3.5 w-3.5" />
-													Delete
-												</button>
-											</div>
-										)}
-									</div>
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<button
+												type="button"
+												className="rounded p-1 text-neutral-300 opacity-0 transition-all hover:bg-neutral-100 hover:text-neutral-600 group-hover:opacity-100"
+											>
+												<MoreHorizontal className="h-3.5 w-3.5" />
+											</button>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent side="right" align="start">
+											<DropdownMenuItem onSelect={() => setPreviewDoc(doc)}>
+												<Eye className="h-3.5 w-3.5" />
+												View
+											</DropdownMenuItem>
+											<DropdownMenuItem onSelect={() => onCreateChat(doc.id)}>
+												<MessageSquarePlus className="h-3.5 w-3.5" />
+												Create chat
+											</DropdownMenuItem>
+											<DropdownMenuSeparator />
+											<DropdownMenuItem
+												destructive
+												onSelect={() => onDelete(doc.id)}
+											>
+												<Trash2 className="h-3.5 w-3.5" />
+												Delete
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
 								</motion.div>
 							))}
 						</AnimatePresence>

@@ -33,6 +33,7 @@ def _conv(
     id: str = "conv0000001test",
     title: str = "Test Conversation",
     documents: list | None = None,
+    is_pinned: bool = False,
 ) -> MagicMock:
     m = MagicMock()
     m.id = id
@@ -40,6 +41,7 @@ def _conv(
     m.documents = documents if documents is not None else []
     m.created_at = _TS
     m.updated_at = _TS
+    m.is_pinned = is_pinned
     return m
 
 
@@ -95,6 +97,7 @@ def mock_conv_repo(conversation: MagicMock) -> MagicMock:
     repo.save = AsyncMock(return_value=conversation)
     repo.delete = AsyncMock(return_value=True)
     repo.update_title = AsyncMock(return_value=conversation)
+    repo.update_pin = AsyncMock(return_value=conversation)
     return repo
 
 

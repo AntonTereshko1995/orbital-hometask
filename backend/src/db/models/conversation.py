@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from sqlalchemy import Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.associations import conversation_documents
@@ -16,6 +17,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     title: Mapped[str] = mapped_column(default="New Conversation")
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     messages: Mapped[list[Message]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"

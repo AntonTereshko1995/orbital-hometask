@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -24,7 +26,7 @@ class ConversationRepository(BaseRepository[Conversation]):
         result = await self._session.execute(
             select(Conversation)
             .options(selectinload(Conversation.documents))
-            .order_by(Conversation.updated_at.desc())
+            .order_by(Conversation.is_pinned.desc(), Conversation.updated_at.desc())
         )
         return list(result.scalars().all())
 
@@ -34,3 +36,11 @@ class ConversationRepository(BaseRepository[Conversation]):
             return None
         conversation.title = title
         return await self.save(conversation)
+
+    async def update_pin(self, id: str, is_pinned: bool) -> Conversation | None:
+        conversation = await self.get(id)
+        if conversation is None:
+            return None
+        conversation.is_pinned = is_pinned
+        return await self.save(conversation)
+

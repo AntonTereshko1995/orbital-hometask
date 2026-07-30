@@ -1,4 +1,4 @@
-import { Viewer, Worker } from "@react-pdf-viewer/core";
+import { Viewer } from "@react-pdf-viewer/core";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
@@ -7,12 +7,6 @@ import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getDocumentUrl } from "../lib/api";
 import type { UploadedDocument } from "../types";
-
-// pdfjs-dist v3.x uses .js extension (not .mjs like v4.x)
-const WORKER_URL = new URL(
-	"pdfjs-dist/build/pdf.worker.min.js",
-	import.meta.url,
-).toString();
 
 interface DocumentViewerProps {
 	documents: UploadedDocument[];
@@ -127,9 +121,7 @@ export function DocumentViewer({ documents }: DocumentViewerProps) {
 			{/* PDF Viewer — Worker stays mounted; only PDFView remounts on tab switch */}
 			{pdfUrl && selectedDoc && (
 				<div className="flex-1 overflow-hidden">
-					<Worker workerUrl={WORKER_URL}>
-						<PDFView key={selectedDoc.id} pdfUrl={pdfUrl} />
-					</Worker>
+					<PDFView key={selectedDoc.id} pdfUrl={pdfUrl} />
 				</div>
 			)}
 		</div>
